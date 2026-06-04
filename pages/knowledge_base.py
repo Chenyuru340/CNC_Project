@@ -111,7 +111,7 @@ def create_knowledge_base_page():
                 multiple=False
             ),
             dbc.Button(
-                [html.I(className="fas fa-plus me-2"), "新建Markdown"],
+                [html.I(className="fas fa-plus me-2"), "新建文件"],
                 id="kb-new-btn", color="success",
                 style={"marginRight": "10px", "borderRadius": "10px"}
             ),
