@@ -20,9 +20,10 @@ def get_filtered_alerts(limit=None):
         return pd.DataFrame()
     warning_danger_tools = tools_df[tools_df['status'].isin(['warning', 'danger'])]['tool_id'].tolist()
 
-    # 2. 获取所有报警
+    # 2. 获取所有报警（如果后端没有实现，get_alerts 会返回空列表）
     alerts = get_alerts(page=1, page_size=500)
     alerts_df = pd.DataFrame(alerts) if alerts else pd.DataFrame()
+    # 如果真实报警为空且处于 Mock 模式，则使用 Mock 数据
     if alerts_df.empty and config.USE_MOCK:
         data = get_mock_data()
         alerts_df = data["alerts"].copy()
@@ -32,13 +33,16 @@ def get_filtered_alerts(limit=None):
     # 3. 过滤
     alerts_df = alerts_df[alerts_df['tool_id'].isin(warning_danger_tools)]
 
-    # 4. 映射中英文
+    # 4. 映射中英文（如果列中存在中文字段则映射为前端需要的英文值）
     if not alerts_df.empty:
-        level_map = {"危险": "danger", "警告": "warning", "信息": "info"}
+        # level 映射
         if 'level' in alerts_df.columns:
+            # 如果已经是英文则保持不变
+            level_map = {"危险": "danger", "警告": "warning", "信息": "info"}
             alerts_df['level'] = alerts_df['level'].map(level_map).fillna(alerts_df['level'])
-        status_map = {"未处理": "unprocessed", "处理中": "processing", "已处理": "processed"}
+        # handle_status 映射
         if 'handle_status' in alerts_df.columns:
+            status_map = {"未处理": "unprocessed", "处理中": "processing", "已处理": "processed"}
             alerts_df['handle_status'] = alerts_df['handle_status'].map(status_map).fillna(alerts_df['handle_status'])
 
     if limit:

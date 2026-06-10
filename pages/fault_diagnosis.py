@@ -30,6 +30,7 @@ def parse_uploaded_file(contents, filename):
         return None
 
 def generate_mock_analysis(active_tab, signal, params):
+    # 注意：这个函数仅在 USE_MOCK=True 时使用，真实模式下不会调用
     if active_tab == "time":
         features = params.get("features", ["均值", "均方根"])
         feat_vals = {}
@@ -274,19 +275,8 @@ def register_fault_diagnosis_callbacks(app):
         if len(signal) < 10:
             return dbc.Alert("信号过短，无法分析", color="warning")
 
-        if config.USE_MOCK:
-            params = {}
-            if active_tab == "time":
-                params["features"] = time_features
-            elif active_tab == "freq":
-                params["sample_rate"] = freq_sr if freq_sr else 25600
-                params["freq_type"] = freq_type
-            else:
-                params["sample_rate"] = stft_sr if stft_sr else 25600
-                params["nperseg"] = 256
-            fig = generate_mock_analysis(active_tab, signal, params)
-            return dcc.Graph(figure=fig, style={"height": "500px", "width": "100%"})
-        else:
+        # 真实模式：调用后端接口 /diagnosis/analyze
+        if not config.USE_MOCK:
             result = post_diagnosis_analysis(
                 file_base64=store_data["contents"].split(',')[1],
                 filename=store_data["filename"],
@@ -298,21 +288,31 @@ def register_fault_diagnosis_callbacks(app):
                     "sample_rate": freq_sr if active_tab == "freq" else stft_sr if active_tab == "stft" else None
                 }
             )
-            print("故障诊断后端返回:", result)
-
             if "error" in result:
                 return dbc.Alert(f"分析失败: {result['error']}", color="danger")
             if "figure" in result:
                 try:
                     fig_json = result["figure"]
+                    # 如果后端返回的是字符串，尝试解析为 JSON
                     if isinstance(fig_json, str):
                         import json
                         fig_json = json.loads(fig_json)
-                    # 直接传给 dcc.Graph，不经过 go.Figure 转换，避免 heatmapgl 等兼容性问题
+                    # 直接传给 dcc.Graph，不需要 go.Figure 转换
                     return dcc.Graph(figure=fig_json, style={"height": "500px", "width": "100%"})
                 except Exception as e:
-                    print(f"图表解析错误详情: {e}")
-                    print(f"figure 内容: {result['figure']}")
-                    return dbc.Alert(f"图表数据格式错误: {str(e)}", color="danger")
+                    return dbc.Alert(f"图表数据解析错误: {str(e)}", color="danger")
             else:
                 return dbc.Alert("后端未返回图表数据", color="danger")
+        else:
+            # 模拟模式：使用前端模拟分析（仅用于开发测试）
+            params = {}
+            if active_tab == "time":
+                params["features"] = time_features
+            elif active_tab == "freq":
+                params["sample_rate"] = freq_sr if freq_sr else 25600
+                params["freq_type"] = freq_type
+            else:
+                params["sample_rate"] = stft_sr if stft_sr else 25600
+                params["nperseg"] = 256
+            fig = generate_mock_analysis(active_tab, signal, params)
+            return dcc.Graph(figure=fig, style={"height": "500px", "width": "100%"})

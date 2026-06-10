@@ -21,7 +21,8 @@ def create_tools_page():
                 ], className="mb-3"),
                 dbc.Spinner(html.Div(id="tools-table-container")),
                 dcc.Store(id="delete-tool-store", data=None),
-                html.Div(id="delete-message", className="mt-2 text-success"),
+                # 删除 delete-message 组件，避免自动显示删除提示
+                # html.Div(id="delete-message", className="mt-2 text-success"),
                 html.Div(id="add-message", className="mt-2 text-success")
             ])
         ]),
@@ -88,7 +89,7 @@ def register_tools_callbacks(app):
             # 状态中文映射
             status_cn = {'normal': '正常', 'warning': '预警', 'danger': '危险'}
             df['status_cn'] = df['status'].map(status_cn)
-            df['rul'] = pd.to_numeric(df['rul'], errors='coerce').fillna(0)
+            df['rul'] = pd.to_numeric(df['rul'], errors='coerce').fillad(0)
             df['rul_display'] = df['rul'].apply(lambda x: f"{int(x // 60)}h{int(x % 60)}m" if x >= 60 else f"{int(x)}min")
             # 表格头
             table_header = [
@@ -110,8 +111,6 @@ def register_tools_callbacks(app):
                     health_color = "darkorange"
                 else:
                     health_color = "red"
-                delete_btn = dbc.Button("删除", id={"type": "delete-tool-btn", "index": row['tool_id']},
-                                        color="danger", size="sm", outline=True)
                 tool_id = row.get('tool_id', 'unknown')
                 table_rows.append(html.Tr([
                     html.Td(row.get('tool_id', '-')),
@@ -134,28 +133,27 @@ def register_tools_callbacks(app):
             traceback.print_exc()
             return dbc.Alert(f"加载失败: {str(e)}", color="danger")
 
-    # 删除刀具回调
+    # 删除刀具回调（不再输出 delete-message）
     @app.callback(
-        [Output("delete-tool-store", "data", allow_duplicate=True),
-         Output("delete-message", "children")],
+        Output("delete-tool-store", "data", allow_duplicate=True),
         Input({"type": "delete-tool-btn", "index": dash.ALL}, "n_clicks"),
         prevent_initial_call=True
     )
     def handle_delete(click_values):
         ctx = dash.callback_context
         if not ctx.triggered:
-            return no_update, ""
+            return no_update
         trigger = ctx.triggered[0]
         if "delete-tool-btn" in trigger["prop_id"]:
             btn_id = json.loads(trigger["prop_id"].split(".")[0])
             tool_id = btn_id["index"]
             try:
                 result = delete_tool(tool_id)
-                # 模拟删除成功
-                return {"deleted": tool_id}, f"刀具 {tool_id} 删除成功"
+                # 只更新 store，触发表格刷新，不再显示任何消息
+                return {"deleted": tool_id}
             except Exception as e:
-                return {"deleted": tool_id}, f"刀具 {tool_id} 已从列表中移除（模拟删除）"
-        return no_update, ""
+                return {"deleted": tool_id}
+        return no_update
 
     # 打开/关闭模态框
     @app.callback(
@@ -206,7 +204,7 @@ def register_tools_callbacks(app):
             "vibration": 0.0,
             "current": 0.0,
             "vb": 0.0,
-            "health_score": 100.0,   # 默认健康
+            "health_score": 100.0,
             "status": "normal",
             "current_usage": 50.0,
             "rul": 2000
