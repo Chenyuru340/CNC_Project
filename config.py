@@ -1,3 +1,3 @@
 # config.py
-USE_MOCK = True # 真实为 False
+USE_MOCK = False # 真实为 False
 BASE_URL = "http://192.168.234.191:8000"
