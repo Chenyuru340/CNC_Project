@@ -10,7 +10,7 @@ from scipy.signal import spectrogram, hilbert
 
 import config
 # 恢复导入后端诊断接口函数
-from api_client import post_diagnosis_analysis
+# from api_client import post_diagnosis_analysis
 
 # ---------- 辅助函数 ----------
 def parse_uploaded_file(contents, filename):
@@ -262,7 +262,7 @@ def register_fault_diagnosis_callbacks(app):
          State("stft-sr", "value")],
         prevent_initial_call=True
     )
-    def run_analysis(n_clicks, store_data, channel, active_tab, time_features, freq_type, stft_sr):
+    def run_analysis(n_clicks, store_data, channel, active_tab, time_features, freq_type, freq_sr, stft_sr):
         if not store_data or "contents" not in store_data:
             return dbc.Alert("请先上传文件", color="warning")
         if not channel:
@@ -276,34 +276,37 @@ def register_fault_diagnosis_callbacks(app):
         if len(signal) < 10:
             return dbc.Alert("信号过短，无法分析", color="warning")
 
-        # 真实模式：调用后端接口 /diagnosis/analyze
+        # # 真实模式：调用后端接口 /diagnosis/analyze
+        # if not config.USE_MOCK:
+        #     result = post_diagnosis_analysis(
+        #         file_base64=store_data["contents"].split(',')[1],
+        #         filename=store_data["filename"],
+        #         channel=channel,
+        #         analysis_type=active_tab,
+        #         params={
+        #             "features": time_features if active_tab == "time" else None,
+        #             "freq_type": freq_type if active_tab == "freq" else None,
+        #             "sample_rate": freq_sr if active_tab == "freq" else stft_sr if active_tab == "stft" else None
+        #         }
+        #     )
+        #     if "error" in result:
+        #         return dbc.Alert(f"分析失败: {result['error']}", color="danger")
+        #     if "figure" in result:
+        #         try:
+        #             fig_json = result["figure"]
+        #             # 如果后端返回的是字符串，尝试解析为 JSON
+        #             if isinstance(fig_json, str):
+        #                 import json
+        #                 fig_json = json.loads(fig_json)
+        #             # 直接传给 dcc.Graph 渲染
+        #             return dcc.Graph(figure=fig_json, style={"height": "500px", "width": "100%"})
+        #         except Exception as e:
+        #             return dbc.Alert(f"图表数据解析错误: {str(e)}", color="danger")
+        #     else:
+        #         return dbc.Alert("后端未返回图表数据", color="danger")
+        # 真实环境：接口文档无故障诊断后端接口，功能暂未开放
         if not config.USE_MOCK:
-            result = post_diagnosis_analysis(
-                file_base64=store_data["contents"].split(',')[1],
-                filename=store_data["filename"],
-                channel=channel,
-                analysis_type=active_tab,
-                params={
-                    "features": time_features if active_tab == "time" else None,
-                    "freq_type": freq_type if active_tab == "freq" else None,
-                    "sample_rate": freq_sr if active_tab == "freq" else stft_sr if active_tab == "stft" else None
-                }
-            )
-            if "error" in result:
-                return dbc.Alert(f"分析失败: {result['error']}", color="danger")
-            if "figure" in result:
-                try:
-                    fig_json = result["figure"]
-                    # 如果后端返回的是字符串，尝试解析为 JSON
-                    if isinstance(fig_json, str):
-                        import json
-                        fig_json = json.loads(fig_json)
-                    # 直接传给 dcc.Graph 渲染
-                    return dcc.Graph(figure=fig_json, style={"height": "500px", "width": "100%"})
-                except Exception as e:
-                    return dbc.Alert(f"图表数据解析错误: {str(e)}", color="danger")
-            else:
-                return dbc.Alert("后端未返回图表数据", color="danger")
+            return dbc.Alert("故障诊断后端接口暂未开发，敬请期待", color="warning")
         # 模拟模式：前端本地计算绘图（本地调试用）
         else:
             params = {}
