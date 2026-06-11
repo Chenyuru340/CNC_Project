@@ -4,9 +4,7 @@ from components import cards, charts
 # 导入合法接口（均为文档定义接口，无非法接口）
 from api_client import get_tools, get_mock_data, get_aggregates, get_alerts
 from utils.data_adapter import normalize_tool
-import pandas
-
-pd
+import pandas as pd
 import config
 
 # 全局字体统一定义
