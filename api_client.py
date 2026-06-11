@@ -1,13 +1,11 @@
-# api_client.py
 import requests
-from typing import Optional, Dict
+from typing import Dict
 import config
 from data.mock_data import generate_mock_data
 import pandas as pd
 from datetime import datetime
 
 BASE_URL = config.BASE_URL
-
 _mock_data_cache = None
 
 def normalize_alert(alert: Dict) -> Dict:
@@ -25,7 +23,9 @@ def get_mock_data():
 
 def _request(method: str, endpoint: str, params=None, json_data=None):
     url = f"{BASE_URL}{endpoint}"
-    headers = {"Content-Type": "application/json"}
+    headers = {}
+    if method in ("POST", "DELETE"):
+        headers = {"Content-Type": "application/json"}
 
     if params:
         params = {k: v for k, v in params.items() if v is not None}
@@ -47,12 +47,10 @@ def _request(method: str, endpoint: str, params=None, json_data=None):
             print("返回结果不是 JSON")
             return None
 
-        # 后端业务错误
-        if isinstance(body, dict) and "code" in body and body["code"] != 200:
+        if isinstance(body, dict) and "code" in body and body["code"] == 500:
             print(f"API error: {body.get('message', 'unknown')}")
             return None
 
-        # 响应结构统一适配
         if isinstance(body, dict):
             if "data" in body:
                 return body["data"]
@@ -83,9 +81,7 @@ def normalize_tool(tool: Dict):
         "rul": float(tool.get("rul", 0) or 0)
     }
 
-# =========================================================
-# 1. 刀具列表
-# =========================================================
+# 刀具列表
 def get_tools(status=None, machine=None, sort_by="health_score", order="desc", page=1, page_size=20):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -103,15 +99,11 @@ def get_tools(status=None, machine=None, sort_by="health_score", order="desc", p
         "sort_by": sort_by, "order": order,
         "page": page, "page_size": page_size
     })
-    if not res:
-        return []
-    if not isinstance(res, list):
+    if not res or not isinstance(res, list):
         return []
     return [normalize_tool(t) for t in res]
 
-# =========================================================
-# 2. 聚合统计
-# =========================================================
+# 聚合统计
 def get_aggregates():
     if config.USE_MOCK:
         data = get_mock_data()
@@ -127,9 +119,7 @@ def get_aggregates():
         }
     return _request("GET", "/api/tools/aggregates") or {}
 
-# =========================================================
-# 3. 特征曲线（保留原有接口）
-# =========================================================
+# 特征曲线
 def get_features(tool_id=None, days=30, features=None):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -137,14 +127,18 @@ def get_features(tool_id=None, days=30, features=None):
         if tool_id:
             df = df[df["tool_id"] == tool_id]
         df = df.sort_values("timestamp")
-        return [{"date": str(row["timestamp"]), "health_score": row.get("health_score", 0),
-                 "vibration": row.get("vibration", 0)} for _, row in df.iterrows()]
+        return [
+            {
+                "date": str(row["timestamp"]),
+                "health_score": row.get("health_score", 0),
+                "vibration": row.get("vibration", 0)
+            }
+            for _, row in df.iterrows()
+        ]
     params = {"tool_id": tool_id, "days": days}
     return _request("GET", "/api/features", params=params) or []
 
-# =========================================================
-# 4. 报警
-# =========================================================
+# 报警列表
 def get_alerts(handle_status=None, level=None, page=1, page_size=20):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -160,15 +154,11 @@ def get_alerts(handle_status=None, level=None, page=1, page_size=20):
         "handle_status": handle_status, "level": level,
         "page": page, "page_size": page_size
     })
-    if res:
-        if not isinstance(res, list):
-            return []
-        return [normalize_alert(a) for a in res]
-    return []
+    if not res or not isinstance(res, list):
+        return []
+    return [normalize_alert(a) for a in res]
 
-# =========================================================
-# 5. 刀具详情
-# =========================================================
+# 刀具详情
 def get_tool_detail(tool_id):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -180,22 +170,20 @@ def get_tool_detail(tool_id):
 def get_tool_by_id(tool_id):
     return get_tool_detail(tool_id)
 
-# =========================================================
-# 6. 新增刀具
-# =========================================================
+# 新增刀具
 def add_tool(tool_data):
     if config.USE_MOCK:
         data = get_mock_data()
         df = data["tools"]
         data["tools"] = pd.concat([df, pd.DataFrame([tool_data])], ignore_index=True)
         return tool_data
-    res = _request("POST", "/api/tools", json_data={"tool_id": tool_data.get("tool_id"),
-                                                    "machine": tool_data.get("machine")})
+    res = _request("POST", "/api/tools", json_data={
+        "tool_id": tool_data.get("tool_id"),
+        "machine": tool_data.get("machine")
+    })
     return normalize_tool(res) if res else {}
 
-# =========================================================
-# 7. 删除刀具
-# =========================================================
+# 删除刀具
 def delete_tool(tool_id):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -204,32 +192,31 @@ def delete_tool(tool_id):
     res = _request("DELETE", f"/api/tools/{tool_id}")
     return res if res else {"message": "删除失败"}
 
-# =========================================================
-# 8. 刀具诊断
-# =========================================================
+# 刀具诊断报告
 def get_tool_diagnosis(tool_id):
     if config.USE_MOCK:
-        return {"tool_id": tool_id, "wear_rate": "48%",
-                "maintenance_suggestion": "正常使用", "abnormal_info": "无异常"}
+        return {
+            "tool_id": tool_id,
+            "wear_rate": "48%",
+            "maintenance_suggestion": "正常使用",
+            "abnormal_info": "无异常"
+        }
     return _request("GET", f"/api/tools/{tool_id}/diagnosis") or {}
 
-# =========================================================
-# 9. PHM 智能体
-# =========================================================
+# PHM智能体
 def post_agent(tool_id, question, file_info=None):
     if config.USE_MOCK:
         from utils.helpers import agent_response
         return agent_response(question, file_info)
     url = f"{BASE_URL}/api/phm/agent"
-    headers = {"Content-Type": "application/json"}
     data = {"tool_id": tool_id, "question": question}
     files = None
-    if file_info and file_info.get("content"):
-        files = {"file": (file_info["filename"], file_info["content"])}
-        resp = requests.post(url, data=data, files=files, timeout=30)
-    else:
-        resp = requests.post(url, json=data, headers=headers, timeout=30)
     try:
+        if file_info and file_info.get("content"):
+            files = {"file": (file_info["filename"], file_info["content"])}
+            resp = requests.post(url, data=data, files=files, timeout=30)
+        else:
+            resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
         return result.get("answer", ""), result.get("figure", None)
@@ -237,34 +224,40 @@ def post_agent(tool_id, question, file_info=None):
         print(f"post_agent 错误: {e}")
         return "接口异常", None
 
-# =========================================================
-# 10. 频谱
-# =========================================================
+# 振动频谱
 def get_spectrum(tool_id):
     if config.USE_MOCK:
         return {"frequencies": [], "amplitudes": []}
     res = _request("GET", f"/api/tools/{tool_id}/spectrum") or []
-    return {"frequencies": [r["freq"] for r in res], "amplitudes": [r["amp"] for r in res]}
+    return {
+        "frequencies": [r["freq"] for r in res],
+        "amplitudes": [r["amp"] for r in res]
+    }
 
-# =========================================================
-# 11. 系统设置
-# =========================================================
+# 系统设置
 def get_settings():
     return _request("GET", "/api/settings") or {"refresh_interval": 30, "alert_threshold": 40}
 
 def save_settings(refresh_interval, alert_threshold):
     return _request("POST", "/api/settings", json_data={
-        "refresh_interval": refresh_interval, "alert_threshold": alert_threshold
+        "refresh_interval": refresh_interval,
+        "alert_threshold": alert_threshold
     }) or {}
 
-# =========================================================
-# 12. 知识库
-# =========================================================
+# 知识库模拟数据 + 搜索接口
 _mock_docs = [
-    {"filename": "刀具磨损故障分析.md", "updated_at": "2026-05-14 10:00",
-     "chunks": 18, "content": "# 刀具磨损故障分析\n\n## 故障特征\n\n- 振动增加\n- 切削力增大\n- 表面粗糙度恶化\n\n## 解决方案\n\n1. 调整切削参数\n2. 检查主轴\n3. 更换刀具\n"},
-    {"filename": "PHM2010数据集使用指南.md", "updated_at": "2026-05-14 15:20",
-     "chunks": 22, "content": "# PHM2010数据集\n\n包含：\n\n- 振动信号\n- 电流信号\n- 声发射信号\n"}
+    {
+        "filename": "刀具磨损故障分析.md",
+        "updated_at": "2026-05-14 10:00",
+        "chunks": 18,
+        "content": "# 刀具磨损故障分析\n\n## 故障特征\n\n- 振动增加\n- 切削力增大\n- 表面粗糙度恶化\n\n## 解决方案\n\n1. 调整切削参数\n2. 检查主轴\n3. 更换刀具\n"
+    },
+    {
+        "filename": "PHM2010数据集使用指南.md",
+        "updated_at": "2026-05-14 15:20",
+        "chunks": 22,
+        "content": "# PHM2010数据集\n\n包含：\n\n- 振动信号\n- 电流信号\n- 声发射信号\n"
+    }
 ]
 
 def search_docs(query):
@@ -276,55 +269,10 @@ def search_docs(query):
         if not results:
             results = [{"filename": doc["filename"], "content": doc["content"][:1000]} for doc in _mock_docs[:2]]
         return results
-    res = _request("GET", "/api/docs/search", params={"q": query, "top_k": 5}) or []
-    if res:
-        return [{"filename": r.get("filename", ""), "content": r.get("snippet", "")} for r in res]
-    return []
+    res = _request("GET", "/api/docs/search", params={"q": query}) or []
+    return [{"filename": r.get("filename", ""), "content": r.get("content", "")} for r in res]
 
-def get_docs_list():
-    if config.USE_MOCK:
-        return [{"filename": doc["filename"], "updated_at": doc["updated_at"],
-                 "chunks": doc["chunks"]} for doc in _mock_docs]
-    res = _request("GET", "/api/docs/list") or []
-    return [{"filename": r.get("filename", ""), "size": r.get("size", 0),
-             "updated_at": r.get("updated_at", "")} for r in res]
-
-def get_doc_detail(filename):
-    if config.USE_MOCK:
-        for doc in _mock_docs:
-            if doc["filename"] == filename:
-                return {"filename": doc["filename"], "content": doc["content"]}
-        return {"filename": "", "content": ""}
-    res = _request("GET", "/api/docs/detail", params={"filename": filename})
-    return {"filename": res.get("filename", ""), "content": res.get("content", "")} if res else {"filename": "", "content": ""}
-
-def add_doc(filename, content):
-    if config.USE_MOCK:
-        global _mock_docs
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        found = False
-        for doc in _mock_docs:
-            if doc["filename"] == filename:
-                doc["content"] = content
-                doc["updated_at"] = now
-                found = True
-                break
-        if not found:
-            _mock_docs.append({"filename": filename, "updated_at": now,
-                               "chunks": max(1, len(content) // 200), "content": content})
-        return {"message": "保存成功"}
-    return _request("POST", "/api/docs/add", json_data={"filename": filename, "content": content}) or {}
-
-def delete_doc(filename):
-    if config.USE_MOCK:
-        global _mock_docs
-        _mock_docs = [doc for doc in _mock_docs if doc["filename"] != filename]
-        return {"message": "删除成功"}
-    return _request("POST", "/api/docs/delete", json_data={"filename": filename}) or {}
-
-# =========================================================
-# 13. 故障诊断
-# =========================================================
+# 故障诊断接口
 def post_diagnosis_analysis(file_base64, filename, channel, analysis_type, params):
     if config.USE_MOCK:
         import plotly.graph_objects as go
@@ -334,8 +282,11 @@ def post_diagnosis_analysis(file_base64, filename, channel, analysis_type, param
     url = f"{BASE_URL}/api/diagnosis/analyze"
     try:
         resp = requests.post(url, json={
-            "file_base64": file_base64, "filename": filename,
-            "channel": channel, "analysis_type": analysis_type, "params": params
+            "file_base64": file_base64,
+            "filename": filename,
+            "channel": channel,
+            "analysis_type": analysis_type,
+            "params": params
         }, timeout=30)
         resp.raise_for_status()
         return resp.json()
@@ -349,30 +300,24 @@ def get_monitoring_status():
     aggregates["unprocessed_alerts"] = len(alerts) if alerts else 0
     return aggregates
 
-# =========================================================
-# 14. 刀具历史健康指标（新增）
-# =========================================================
+# 刀具历史健康指标
 def get_tool_history(tool_id: str, days: int = 30):
-    """
-    获取刀具历史健康指标（时间, HI）
-    返回格式: {"time": [日期字符串列表], "hi": [健康指标数值列表]}
-    """
     if config.USE_MOCK:
         data = get_mock_data()
         features = data["features"]
         tool_features = features[features["tool_id"] == tool_id].sort_values("timestamp")
         if not tool_features.empty:
             times = tool_features["timestamp"].tolist()
-            # 模拟 HI = health_score / 100（范围 0~1）
             hi_vals = (tool_features["health_score"] / 100).tolist()
-            return {"time": times, "hi": hi_vals}
-        else:
-            return {"time": [], "hi": []}
+            return {"time": times, "health": hi_vals, "hi": hi_vals, "rul": []}
+        return {"time": [], "health": [], "hi": [], "rul": []}
     else:
-        # 真实后端接口
         res = _request("GET", f"/api/tools/{tool_id}/history", params={"days": days})
         if res and isinstance(res, dict):
-            return {"time": res.get("time", []), "hi": res.get("hi", [])}
-        # 如果后端未实现该接口，可以回退到 get_features 临时处理
-        # 但这里直接返回空
-        return {"time": [], "hi": []}
+            return {
+                "time": res.get("time", []),
+                "health": res.get("health", []),
+                "hi": res.get("hi", []),
+                "rul": res.get("rul", [])
+            }
+        return {"time": [], "health": [], "hi": [], "rul": []}

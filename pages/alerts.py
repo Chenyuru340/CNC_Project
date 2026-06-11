@@ -1,4 +1,3 @@
-# pages/alerts.py
 import dash_bootstrap_components as dbc
 from api_client import get_alerts, get_mock_data, get_tools
 from utils.data_adapter import normalize_tool
@@ -20,7 +19,7 @@ def get_filtered_alerts(limit=None):
         return pd.DataFrame()
     warning_danger_tools = tools_df[tools_df['status'].isin(['warning', 'danger'])]['tool_id'].tolist()
 
-    # 2. 获取所有报警（如果后端没有实现，get_alerts 会返回空列表）
+    # 2. 获取所有报警（后端接口：/api/alerts，无数据返回 []）
     alerts = get_alerts(page=1, page_size=500)
     alerts_df = pd.DataFrame(alerts) if alerts else pd.DataFrame()
     # 如果真实报警为空且处于 Mock 模式，则使用 Mock 数据
@@ -30,20 +29,10 @@ def get_filtered_alerts(limit=None):
     if alerts_df.empty:
         return pd.DataFrame()
 
-    # 3. 过滤
-    alerts_df = alerts_df[alerts_df['tool_id'].isin(warning_danger_tools)]
+    # 【已删除】重复的中英文映射：api_client.py 中已完成中文转英文，此处无需二次转换
 
-    # 4. 映射中英文（如果列中存在中文字段则映射为前端需要的英文值）
-    if not alerts_df.empty:
-        # level 映射
-        if 'level' in alerts_df.columns:
-            # 如果已经是英文则保持不变
-            level_map = {"危险": "danger", "警告": "warning", "信息": "info"}
-            alerts_df['level'] = alerts_df['level'].map(level_map).fillna(alerts_df['level'])
-        # handle_status 映射
-        if 'handle_status' in alerts_df.columns:
-            status_map = {"未处理": "unprocessed", "处理中": "processing", "已处理": "processed"}
-            alerts_df['handle_status'] = alerts_df['handle_status'].map(status_map).fillna(alerts_df['handle_status'])
+    # 3. 过滤：只保留预警/危险刀具对应的报警
+    alerts_df = alerts_df[alerts_df['tool_id'].isin(warning_danger_tools)]
 
     if limit:
         alerts_df = alerts_df.head(limit)
@@ -131,6 +120,7 @@ def register_alerts_callbacks(app):
         required_columns = [
             'id', 'time', 'tool_id', 'machine', 'alert_type', 'level', 'description', 'handle_status'
         ]
+        # 字段兜底：缺失列填充空字符串，防止表格报错
         for col in required_columns:
             if col not in alerts_df.columns:
                 alerts_df[col] = ""
@@ -148,6 +138,7 @@ def register_alerts_callbacks(app):
                     dbc.Col(dbc.Card(dbc.CardBody([html.H4(danger_cnt, className="text-danger"), html.P("危险报警")]), className="text-center"), width=3),
                     dbc.Col(dbc.Card(dbc.CardBody([html.H4(unprocessed_cnt), html.P("未处理")]), className="text-center"), width=3),
                 ])
+                # 表格展示：英文转回中文（仅前端展示用，筛选仍用英文）
                 level_cn = {'danger': '危险', 'warning': '预警', 'info': '提示'}
                 status_cn = {'unprocessed': '未处理', 'processing': '处理中', 'processed': '已处理'}
                 alerts_df = alerts_df.copy()

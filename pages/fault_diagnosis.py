@@ -9,6 +9,7 @@ import numpy as np
 from scipy.signal import spectrogram, hilbert
 
 import config
+# 恢复导入后端诊断接口函数
 from api_client import post_diagnosis_analysis
 
 # ---------- 辅助函数 ----------
@@ -55,7 +56,7 @@ def generate_mock_analysis(active_tab, signal, params):
         fig.update_layout(
             title="时域特征曲线", xaxis_title="样本序号", yaxis_title="特征值",
             template="plotly_dark", height=450,
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0)'
         )
         return fig
     elif active_tab == "freq":
@@ -75,7 +76,7 @@ def generate_mock_analysis(active_tab, signal, params):
             title=f"{'包络谱' if freq_type=='envelope' else '频谱'}分析",
             xaxis_title="频率 (Hz)", yaxis_title="幅值",
             template="plotly_dark", height=450,
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+            paper_bgcolor='rgba(0,0,0)', plot_bgcolor='rgba(0,0,0)'
         )
         return fig
     else:
@@ -89,7 +90,7 @@ def generate_mock_analysis(active_tab, signal, params):
         fig.update_layout(
             title="STFT 时频图谱", xaxis_title="时间 (s)", yaxis_title="频率 (Hz)",
             template="plotly_dark", height=450,
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+            paper_bgcolor='rgba(0,0,0)', plot_bgcolor='rgba(0,0,0)'
         )
         return fig
 
@@ -261,7 +262,7 @@ def register_fault_diagnosis_callbacks(app):
          State("stft-sr", "value")],
         prevent_initial_call=True
     )
-    def run_analysis(n_clicks, store_data, channel, active_tab, time_features, freq_type, freq_sr, stft_sr):
+    def run_analysis(n_clicks, store_data, channel, active_tab, time_features, freq_type, stft_sr):
         if not store_data or "contents" not in store_data:
             return dbc.Alert("请先上传文件", color="warning")
         if not channel:
@@ -297,14 +298,14 @@ def register_fault_diagnosis_callbacks(app):
                     if isinstance(fig_json, str):
                         import json
                         fig_json = json.loads(fig_json)
-                    # 直接传给 dcc.Graph，不需要 go.Figure 转换
+                    # 直接传给 dcc.Graph 渲染
                     return dcc.Graph(figure=fig_json, style={"height": "500px", "width": "100%"})
                 except Exception as e:
                     return dbc.Alert(f"图表数据解析错误: {str(e)}", color="danger")
             else:
                 return dbc.Alert("后端未返回图表数据", color="danger")
+        # 模拟模式：前端本地计算绘图（本地调试用）
         else:
-            # 模拟模式：使用前端模拟分析（仅用于开发测试）
             params = {}
             if active_tab == "time":
                 params["features"] = time_features
