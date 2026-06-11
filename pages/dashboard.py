@@ -1,19 +1,27 @@
 from dash import html, dcc, callback, Input, Output
 import dash_bootstrap_components as dbc
 from components import cards, charts
-# 补充导入聚合、报警接口函数
+# 导入合法接口（均为文档定义接口，无非法接口）
 from api_client import get_tools, get_mock_data, get_aggregates, get_alerts
-import pandas as pd
 from utils.data_adapter import normalize_tool
+import pandas
+
+pd
 import config
 
+# 全局字体统一定义
 COMMON_FONT = "Microsoft YaHei"
+
 
 def create_dashboard():
     return html.Div([
+        # 关键组件：路由监听（原代码缺失，导致页面无法自动加载数据）
+        dcc.Location(id="url", refresh=False),
+
         html.H2("刀具健康总览", className="mb-4", style={"fontFamily": COMMON_FONT}),
         dbc.Spinner(html.Div(id="dashboard-content"))
     ])
+
 
 def register_dashboard_callbacks(app):
     @app.callback(
@@ -22,54 +30,57 @@ def register_dashboard_callbacks(app):
     )
     def load_dashboard(_):
         try:
-            # ========== 1. 调用官方聚合接口 /api/tools/aggregates（仪表盘专用统计） ==========
-            agg_data = get_aggregates()
+            # 1. 获取聚合统计数据（接口：/api/tools/aggregates）
+            agg_data = get_aggregates() or {}
             total_tools = agg_data.get("total_tools", 0)
             warning_tools = agg_data.get("warning_tools", 0)
             danger_tools = agg_data.get("danger_tools", 0)
-            avg_health = agg_data.get("avg_health", 0.0)
-            avg_rul = agg_data.get("avg_rul", 0.0)
+            # 数值格式化，匹配接口示例（保留1位小数）
+            avg_health = round(agg_data.get("avg_health", 0.0), 1)
+            avg_rul = round(agg_data.get("avg_rul", 0.0), 1)
             healthy_tools = total_tools - warning_tools - danger_tools
 
-            # 统计卡片：补齐文档要求的平均健康度、平均剩余寿命
+            # 组装统计卡片行
             stats_row = dbc.Row([
                 dbc.Col(cards.stat_card("在线刀具", total_tools, "tools", "primary"), width=2),
                 dbc.Col(cards.stat_card("健康刀具", healthy_tools, "heartbeat", "success"), width=2),
                 dbc.Col(cards.stat_card("预警刀具", warning_tools, "exclamation-triangle", "warning"), width=2),
                 dbc.Col(cards.stat_card("危险刀具", danger_tools, "exclamation-circle", "danger"), width=2),
-                dbc.Col(cards.stat_card("平均健康度", f"{avg_health}", "activity", "info"), width=2),
-                dbc.Col(cards.stat_card("平均剩余寿命", f"{avg_rul}", "clock", "secondary"), width=2),
+                dbc.Col(cards.stat_card("平均健康度", avg_health, "activity", "info"), width=2),
+                dbc.Col(cards.stat_card("平均剩余寿命", avg_rul, "clock", "secondary"), width=2),
             ], className="mb-4")
 
-            # ========== 2. 获取刀具列表（用于饼图 + 刀具卡片展示） ==========
+            # 2. 获取刀具列表数据（接口：/api/tools）
             tools = get_tools(page=1, page_size=200)
             tools = [normalize_tool(t) for t in tools] if tools else []
             tools_df = pd.DataFrame(tools)
 
-            # Mock 数据兜底
+            # Mock模式兜底数据
             if tools_df.empty and config.USE_MOCK:
                 mock_data = get_mock_data()
                 tools_df = mock_data["tools"].copy()
 
+            # 字段兜底，避免图表渲染报错
+            for col in ["status", "health_score", "rul"]:
+                if col not in tools_df.columns:
+                    tools_df[col] = ""
+
+            # 刀具数据完全为空时直接返回
             if tools_df.empty:
                 return html.Div([
                     stats_row,
                     dbc.Alert("刀具数据为空", color="warning")
                 ])
 
-            # 字段空值兜底，防止图表报错
-            for col in ["status", "health_score", "rul"]:
-                if col not in tools_df.columns:
-                    tools_df[col] = ""
-
-            # ========== 3. 调用官方报警接口 /api/alerts，动态展示报警 ==========
+            # 3. 获取报警数据（接口：/api/alerts）
             alerts = get_alerts(page=1, page_size=10)
             unprocessed_alert_count = len([a for a in alerts if a.get("handle_status") == "unprocessed"])
 
+            # 组装报警模块
             if alerts:
                 alert_list_items = []
                 for idx, alert in enumerate(alerts[:5]):
-                    alert_text = f"[{alert.get('time','')}] {alert.get('tool_id','')} - {alert.get('alert_type','')}"
+                    alert_text = f"[{alert.get('time', '')}] {alert.get('tool_id', '')} - {alert.get('alert_type', '')}"
                     alert_list_items.append(html.Li(alert_text))
                 alert_content = html.Div([
                     html.P(f"未处理报警：{unprocessed_alert_count} 条", className="fw-bold"),
@@ -85,7 +96,7 @@ def register_dashboard_callbacks(app):
                 ])
             ])
 
-            # ========== 4. 刀具状态饼图 ==========
+            # 4. 刀具状态饼图
             pie_fig = charts.create_degradation_pie(tools_df)
             status_chart = dbc.Col([
                 dbc.Card([
@@ -99,7 +110,7 @@ def register_dashboard_callbacks(app):
                 status_chart
             ], className="mb-4")
 
-            # ========== 5. 刀具卡片列表 ==========
+            # 5. 刀具卡片列表（兼容两种卡片函数）
             try:
                 tool_card_func = cards.tool_card_simple
             except AttributeError:
@@ -112,6 +123,7 @@ def register_dashboard_callbacks(app):
                 ])
             ])
 
+            # 页面整体组装
             return html.Div([stats_row, row_alert, tools_grid])
 
         except Exception as e:
