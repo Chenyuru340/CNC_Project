@@ -51,12 +51,12 @@ def fetch_alerts(handle_status, level, start_time, end_time):
         # 开始时间筛选
         if start_time:
             start_dt = pd.to_datetime(start_time, errors='coerce')
-            if start_dt:
+            if pd.notna(start_dt):
                 alerts_df = alerts_df[alerts_df['time'] >= start_dt]
-        # 结束时间筛选
+        # 结束时间筛选：增加异常容错，非法时间自动置空
         if end_time:
-            end_dt = pd.to_datetime(end_time)
-            if end_dt:
+            end_dt = pd.to_datetime(end_time, errors='coerce')
+            if pd.notna(end_dt):
                 alerts_df = alerts_df[alerts_df['time'] <= end_dt]
         # 转回字符串用于页面展示
         alerts_df['time'] = alerts_df['time'].dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -135,9 +135,6 @@ def build_stats_and_table(alerts_df):
 def create_alerts_page():
     """报警中心页面布局（补充url路由组件，修复初始化加载BUG）"""
     return html.Div([
-        # 关键组件：路由监听，用于页面进入时自动加载数据
-        dcc.Location(id="url", refresh=False),
-
         html.H2("报警中心", className="mb-4"),
         dbc.Card([
             dbc.CardBody([
@@ -208,7 +205,7 @@ def register_alerts_callbacks(app):
         [State("alert-handle-status", "value"),
          State("alert-level", "value"),
          State("alert-start-time", "value"),
-         State("alert-end-time")],
+         State("alert-end-time", "value")],  # 补全value，修复Dash参数报错
         prevent_initial_call=True
     )
     def query_alerts(n_clicks, handle_status, level, start_time, end_time):

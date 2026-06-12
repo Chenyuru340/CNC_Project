@@ -89,7 +89,7 @@ def register_tools_callbacks(app):
             # 状态中文映射
             status_cn = {'normal': '正常', 'warning': '预警', 'danger': '危险'}
             df['status_cn'] = df['status'].map(status_cn)
-            df['rul'] = pd.to_numeric(df['rul'], errors='coerce').fillad(0)
+            df['rul'] = pd.to_numeric(df['rul'], errors='coerce').fillna(0)
             df['rul_display'] = df['rul'].apply(lambda x: f"{int(x // 60)}h{int(x % 60)}m" if x >= 60 else f"{int(x)}min")
             # 表格头
             table_header = [

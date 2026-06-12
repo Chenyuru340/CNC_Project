@@ -13,9 +13,6 @@ COMMON_FONT = "Microsoft YaHei"
 
 def create_dashboard():
     return html.Div([
-        # 关键组件：路由监听（原代码缺失，导致页面无法自动加载数据）
-        dcc.Location(id="url", refresh=False),
-
         html.H2("刀具健康总览", className="mb-4", style={"fontFamily": COMMON_FONT}),
         dbc.Spinner(html.Div(id="dashboard-content"))
     ])

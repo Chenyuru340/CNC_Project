@@ -9,11 +9,17 @@ from typing import Dict
 
 STATUS_MAP = {
     "正常": "normal",
+    "健康": "normal",
     "normal": "normal",
 
+    "轻度磨损": "warning",
+    "轻微磨损": "warning",
     "预警": "warning",
     "warning": "warning",
 
+    "中度磨损": "danger",
+    "重度磨损": "danger",
+    "严重磨损": "danger",
     "危险": "danger",
     "danger": "danger"
 }
@@ -98,13 +104,13 @@ def normalize_status(tool: Dict):
     # 如果没有状态
     # 根据健康度自动推断
     health = safe_float(
-        tool.get("health_score", 0)
+        tool.get("health_score", tool.get("health", 0))
     )
 
     if health >= 80:
         return "normal"
 
-    elif health >= 60:
+    elif health >= 50:
         return "warning"
 
     else:
@@ -126,29 +132,30 @@ def normalize_tool(tool: Dict):
         "tool_id": (
             tool.get("tool_id")
             or tool.get("id")
+            or tool.get("name")
             or ""
         ),
 
         "machine": tool.get("machine", ""),
 
-        "type": tool.get("type", ""),
+        "type": tool.get("type", "铣刀"),
 
         # 传感器
         "vibration": safe_float(
-            tool.get("vibration", 0)
+            tool.get("vibration", tool.get("vib_spindle", 0))
         ),
 
         "current": safe_float(
-            tool.get("current", 0)
+            tool.get("current", tool.get("smcAC", 0))
         ),
 
         "vb": safe_float(
-            tool.get("vb", 0)
+            tool.get("vb", tool.get("VB", 0))
         ),
 
         # 健康度
         "health_score": safe_float(
-            tool.get("health_score", 0)
+            tool.get("health_score", tool.get("health", 0))
         ),
 
         # 状态

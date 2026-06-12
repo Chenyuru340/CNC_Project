@@ -1,0 +1,330 @@
+基础信息
+基础路径：/api
+所有接口返回 JSON，字符编码 UTF-8。
+错误时统一返回：
+json
+{
+  "code": 500,
+  "message": "错误描述"}
+
+1. 刀具列表
+用途：用于刀具管理、实时监控、仪表盘简表。
+URL：/tools
+方法：GET
+请求参数（Query String）：
+status (可选)：正常 / 预警 / 危险
+machine (可选)：机床编号
+sort_by (可选)：排序字段，如 health_score、rul
+order (可选)：asc 或 desc
+page (可选)：页码
+page_size (可选)：每页数量
+响应示例：
+[
+  {
+    "tool_id": "T-001",
+    "machine": "机床_01",
+    "type": "铣刀",
+    "vibration": 2.3,
+    "health_score": 85.2,
+    "status": "正常",
+    "current_usage": 45.3,
+    "rul": 120
+  }]
+字段说明：
+tool_id：自定义刀具编号
+machine：自定义机床编号
+type：固定为铣刀（NASA 铣削实验）
+vibration：取自 NASA vib_spindle（主轴振动）
+health_score：计算值，结合 NASA VB、vib_spindle、smcAC 加权计算
+status：映射值，由 health_score 划分（正常 / 预警 / 危险）
+current_usage：计算值，NASA smcAC / 额定电流 ×100%
+rul：预测值，基于 NASA VB 序列训练模型预测剩余寿命
+
+2. 聚合指标
+用途：仪表盘统计卡片数据。
+URL：/tools/aggregates
+方法：GET
+响应示例：
+{
+  "total_tools": 20,
+  "warning_tools": 5,
+  "danger_tools": 2,
+  "avg_health": 78.3,
+  "avg_rul": 98.5}
+
+3. 特征曲线
+用途：仪表盘振动、健康度趋势图。
+URL：/features
+方法：GET
+请求参数：
+tool_id (可选)：指定刀具，不传则返回所有刀具每天的平均值
+days (可选)：最近天数，默认 30
+响应示例：
+[
+  {
+    "date": "2026-03-01",
+    "vibration": 2.5,
+    "health_score": 85.2
+  }]
+字段说明：
+date：日期
+vibration：NASA vib_spindle 主轴振动平均值
+health_score：健康度计算平均值
+
+4. 报警列表
+用途：报警中心表格及统计。
+URL：/alerts
+方法：GET
+请求参数：
+handle_status (可选)：未处理 / 已处理 / 处理中
+level (可选)：危险 / 警告 / 信息
+page (可选)
+page_size (可选)
+响应示例：
+[
+  {
+    "id": 1,
+    "time": "2026-03-25 10:30:00",
+    "tool_id": "T-003",
+    "machine": "机床_02",
+    "alert_type": "磨损超标",
+    "level": "危险",
+    "description": "刀具VB磨损值超过0.25mm阈值",
+    "handle_status": "未处理"
+  }]
+5. PHM 智能体交互
+用途：PHM 智能体页面绑定选中刀具，接收问题和文件，返回诊断文本与 Plotly 图表。
+URL：/phm/agent
+方法：POST
+请求格式 1（纯文本，application/json）：
+
+{
+  "tool_id": "T-001",
+  "question": "这把刀具的状态和维护建议是什么？"}
+请求格式 2（文件 + 文本，multipart/form-data）：
+tool_id：选中刀具编号
+question：用户问题
+file (可选)：上传文件（CSV / 图片）
+响应示例：
+{
+  "answer": "刀具T-001健康度85.2分，状态正常，振动值2.3mm/s，剩余寿命120分钟，建议常规检查VB磨损",
+  "figure": {
+    "data": [],
+    "layout": {}
+  }}
+字段说明：
+answer：PHM 智能体诊断回答
+figure：Plotly 图表 JSON，无图表为 null
+
+6. 单刀具详情
+用途：PHM 智能体页面点击刀具，渲染状态卡片、诊断基础数据。
+URL：/tools/{tool_id}
+方法：GET
+响应示例：
+{
+  "tool_id": "T-001",
+  "machine": "机床_01",
+  "type": "铣刀",
+  "vibration": 2.3,
+  "health_score": 85.2,
+  "status": "正常",
+  "current_usage": 45.3,
+  "rul": 120}
+
+7. 新增刀具
+用途：刀具管理页面新增刀具。
+URL：/tools
+方法：POST
+请求参数（application/json）：
+{
+  "tool_id": "T-021",
+  "machine": "机床_03"}
+成功响应示例：
+{
+  "tool_id": "T-021",
+  "machine": "机床_03",
+  "type": "铣刀",
+  "vibration": 1.5,
+  "health_score": 90.0,
+  "status": "正常",
+  "current_usage": 50.0,
+  "rul": 2000}
+失败响应示例：
+{
+  "code": 500,
+  "message": "刀具ID已存在"}
+
+8. 删除刀具
+用途：刀具管理页面删除指定刀具。
+URL：/tools/{tool_id}
+方法：DELETE
+成功响应示例：
+{}
+失败响应示例：
+{
+  "code": 500,
+  "message": "刀具不存在或删除失败"}
+
+9. 获取系统设置
+用途：系统设置页面加载数据刷新间隔、报警阈值。
+URL：/settings
+方法：GET
+响应示例：
+{
+  "refresh_interval": 30,
+  "alert_threshold": 40}
+
+10. 保存系统设置
+用途：系统设置页面保存配置。
+URL：/settings
+方法：POST
+请求参数（application/json）：
+{
+  "refresh_interval": 30,
+  "alert_threshold": 40}
+响应示例：
+{
+  "refresh_interval": 30,
+  "alert_threshold": 40}
+
+11. 刀具振动频谱数据
+用途：PHM 智能体页面振动频谱分析柱状图。
+URL：/tools/{tool_id}/spectrum
+方法：GET
+响应示例：
+[
+  {"freq": 50, "amp": 2.3},
+  {"freq": 100, "amp": 1.8},
+  {"freq": 500, "amp": 0.5},
+  {"freq": 1000, "amp": 0.3}]
+
+12. 单刀具诊断报告
+用途：PHM 智能体页面右侧展示诊断结果。
+URL：/tools/{tool_id}/diagnosis
+方法：GET
+响应示例：
+{
+  "tool_id": "T-001",
+  "wear_rate": "48%",
+  "maintenance_suggestion": "正常使用，下次加工后检查VB磨损",
+  "abnormal_info": "无异常"}
+1、状态监测历史数据接口
+接口：
+GET /api/tools/{tool_id}/history
+功能：
+获取刀具历史健康状态数据。
+返回建议：
+{
+"time": [...],
+"health": [...],
+"hi": [...],
+"rul": [...]
+}
+提供方：
+数据、后端组
+使用方：
+前端状态监测页面
+Agent图表分析
+2、振动时序数据接口
+接口：
+GET /api/tools/{tool_id}/vibration
+参数：
+start_time
+end_time
+功能：
+获取指定时间段振动波形数据。
+返回建议：
+{
+"time": [...],
+"vibration_x": [...],
+"vibration_y": [...],
+"vibration_z": [...]
+}
+提供方：
+数据、 后端组
+使用方：
+故障诊断模块
+Agent图表分析
+3、特征指标接口
+接口：
+GET /api/tools/{tool_id}/features
+功能：
+获取特征指标数据。
+返回建议：
+{
+"rms": [...],
+"kurtosis": [...],
+"mean": [...],
+"variance": [...]
+}
+提供方：
+数据、后端组
+使用方：
+Agent分析功能
+状态监测页面
+4、知识库检索接口
+接口：
+GET /api/docs/search
+参数：
+q
+示例：
+/api/docs/search?q=刀具磨损
+功能：
+根据关键词检索知识库内容。
+返回建议：
+[
+{
+"filename":"维护手册.pdf",
+"content":"..."
+}
+]
+提供方：
+RAG、 后端组
+使用方：
+知识库管理页面
+Agent知识查询
+
+5、多格式文档上传支持
+支持格式：
+PDF
+DOC
+DOCX
+TXT
+MD
+责任划分：
+前端组：
+上传组件支持格式选择
+后端组：
+文件解析
+RAG组：
+文本切块
+Embedding
+向量入库
+6、Agent调用接口范围确认
+Agent建议直接调用现有业务接口：
+GET /api/tools
+GET /api/tools/{tool_id}
+GET /api/tools/{tool_id}/history
+GET /api/tools/{tool_id}/features
+GET /api/tools/{tool_id}/spectrum
+GET /api/tools/{tool_id}/vibration
+GET /api/docs/search
+无需额外开发Agent专用接口。
+Agent负责：
+识别用户意图
+↓
+调用对应接口
+↓
+组织回答
+↓
+返回文字和图表
+另外还有知识库管理页面
+具体需要的接口：
+GET /api/docs/list 获取文档列表
+
+POST /api/docs/add 添加/更新文档（传 filename 和 Markdown 内容）
+
+POST /api/docs/delete 删除文档
+
+GET /api/docs/detail?filename=xxx 获取文档详情（用于编辑回显）
+然后智能体内部调用的检索接口 /api/docs/search 应该也是同一套向量库，这样知识库更新后智能体就能用到新内容

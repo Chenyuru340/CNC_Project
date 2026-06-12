@@ -8,9 +8,27 @@ from datetime import datetime
 BASE_URL = config.BASE_URL
 _mock_data_cache = None
 
+TOOL_STATUS_TO_API = {"normal": "正常", "warning": "预警", "danger": "危险"}
+ALERT_LEVEL_TO_API = {"danger": "危险", "warning": "警告", "info": "信息"}
+ALERT_STATUS_TO_API = {"unprocessed": "未处理", "processing": "处理中", "processed": "已处理"}
+TOOL_STATUS_FROM_API = {
+    "正常": "normal",
+    "健康": "normal",
+    "normal": "normal",
+    "轻度磨损": "warning",
+    "轻微磨损": "warning",
+    "预警": "warning",
+    "warning": "warning",
+    "中度磨损": "danger",
+    "重度磨损": "danger",
+    "严重磨损": "danger",
+    "危险": "danger",
+    "danger": "danger",
+}
+
 # 报警字段中英文映射
 def normalize_alert(alert: Dict) -> Dict:
-    level_map = {"危险": "danger", "预警": "warning", "信息": "info"}
+    level_map = {"危险": "danger", "警告": "warning", "预警": "warning", "信息": "info"}
     status_map = {"未处理": "unprocessed", "处理中": "processing", "已处理": "processed"}
     alert["level"] = level_map.get(alert.get("level"), alert.get("level"))
     alert["handle_status"] = status_map.get(alert.get("handle_status"), alert.get("handle_status"))
@@ -18,17 +36,86 @@ def normalize_alert(alert: Dict) -> Dict:
 
 # 刀具字段格式化、状态映射、数值兜底
 def normalize_tool(tool: Dict):
-    status_map = {"正常": "normal", "预警": "warning", "危险": "danger"}
+    if not isinstance(tool, dict):
+        return {}
+    health_score = safe_float(
+        tool.get("health_score", tool.get("health", tool.get("score", 0)))
+    )
+    status = TOOL_STATUS_FROM_API.get(tool.get("status"))
+    if status is None:
+        status = infer_status_from_health(health_score)
     return {
-        "tool_id": tool.get("tool_id") or tool.get("id"),
-        "machine": tool.get("machine", ""),
-        "type": tool.get("type", ""),
-        "vibration": float(tool.get("vibration", 0) or 0),
-        "health_score": float(tool.get("health_score", 0) or 0),
-        "status": status_map.get(tool.get("status"), tool.get("status", "normal")),
-        "current_usage": float(tool.get("current_usage", 0) or 0),
-        "rul": float(tool.get("rul", 0) or 0)
+        "tool_id": tool.get("tool_id") or tool.get("id") or tool.get("name") or "",
+        "name": tool.get("name", ""),
+        "machine": tool.get("machine") or tool.get("machine_id") or "",
+        "type": tool.get("type") or "铣刀",
+        "vibration": safe_float(tool.get("vibration", tool.get("vib_spindle", 0))),
+        "current": safe_float(tool.get("current", tool.get("smcAC", 0))),
+        "vb": safe_float(tool.get("vb", tool.get("VB", 0))),
+        "health_score": health_score,
+        "status": status,
+        "raw_status": tool.get("raw_status") or tool.get("status", ""),
+        "current_usage": safe_float(tool.get("current_usage", 0)),
+        "rul": safe_float(tool.get("rul", 0))
     }
+
+
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def infer_status_from_health(health_score):
+    if health_score >= 80:
+        return "normal"
+    if health_score >= 50:
+        return "warning"
+    return "danger"
+
+
+def build_aggregates_from_tools(tools):
+    tools = [normalize_tool(t) for t in tools if isinstance(t, dict)]
+    total_tools = len(tools)
+    warning_tools = len([t for t in tools if t.get("status") == "warning"])
+    danger_tools = len([t for t in tools if t.get("status") == "danger"])
+    avg_health = 0
+    avg_rul = 0
+    if tools:
+        avg_health = round(sum(t.get("health_score", 0) for t in tools) / total_tools, 1)
+        avg_rul = round(sum(t.get("rul", 0) for t in tools) / total_tools, 1)
+    return {
+        "total_tools": total_tools,
+        "warning_tools": warning_tools,
+        "danger_tools": danger_tools,
+        "avg_health": avg_health,
+        "avg_rul": avg_rul,
+    }
+
+
+def build_alerts_from_tools(tools):
+    alerts = []
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for index, tool in enumerate([normalize_tool(t) for t in tools], start=1):
+        status = tool.get("status")
+        if status == "normal":
+            continue
+        level = "danger" if status == "danger" else "warning"
+        raw_status = tool.get("raw_status") or ("危险" if level == "danger" else "预警")
+        alerts.append({
+            "id": index,
+            "time": now,
+            "tool_id": tool.get("tool_id", ""),
+            "machine": tool.get("machine", ""),
+            "alert_type": "刀具磨损异常",
+            "level": level,
+            "description": f"刀具状态为{raw_status}，健康度 {tool.get('health_score', 0):.2f} 分",
+            "handle_status": "unprocessed",
+        })
+    return alerts
 
 # 加载全局模拟数据
 def get_mock_data():
@@ -101,13 +188,18 @@ def get_tools(status=None, machine=None, sort_by="health_score", order="desc", p
         end = start + page_size
         return tools[start:end]
     res = _request("GET", "/api/tools", params={
-        "status": status, "machine": machine,
+        "status": TOOL_STATUS_TO_API.get(status, status), "machine": machine,
         "sort_by": sort_by, "order": order,
         "page": page, "page_size": page_size
     })
     if not res or not isinstance(res, list):
         return []
-    return [normalize_tool(t) for t in res]
+    tools = [normalize_tool(t) for t in res]
+    if status:
+        tools = [t for t in tools if t.get("status") == status]
+    if machine:
+        tools = [t for t in tools if t.get("machine") == machine]
+    return tools
 
 # GET /api/tools/aggregates 聚合指标
 def get_aggregates():
@@ -123,7 +215,11 @@ def get_aggregates():
             "avg_health": round(df["health_score"].mean(), 1),
             "avg_rul": round(df["rul"].mean(), 1)
         }
-    return _request("GET", "/api/tools/aggregates") or {}
+    res = _request("GET", "/api/tools/aggregates")
+    if isinstance(res, dict):
+        return res
+    tools = get_tools(page=1, page_size=1000)
+    return build_aggregates_from_tools(tools)
 
 # GET /api/features 特征曲线（删除多余features入参）
 def get_features(tool_id=None, days=30):
@@ -153,12 +249,22 @@ def get_alerts(handle_status=None, level=None, page=1, page_size=20):
         end = start + page_size
         return alerts[start:end]
     res = _request("GET", "/api/alerts", params={
-        "handle_status": handle_status, "level": level,
+        "handle_status": ALERT_STATUS_TO_API.get(handle_status, handle_status),
+        "level": ALERT_LEVEL_TO_API.get(level, level),
         "page": page, "page_size": page_size
     })
-    if not res or not isinstance(res, list):
-        return []
-    return [normalize_alert(a) for a in res]
+    if isinstance(res, list):
+        alerts = [normalize_alert(a) for a in res]
+    else:
+        tools = get_tools(page=1, page_size=1000)
+        alerts = build_alerts_from_tools(tools)
+    if handle_status:
+        alerts = [a for a in alerts if a.get("handle_status") == handle_status]
+    if level:
+        alerts = [a for a in alerts if a.get("level") == level]
+    start = (page - 1) * page_size
+    end = start + page_size
+    return alerts[start:end]
 
 # GET /api/tools/{tool_id} 单刀具详情
 def get_tool_detail(tool_id):
@@ -192,7 +298,7 @@ def delete_tool(tool_id):
         data["tools"] = data["tools"][data["tools"]["tool_id"] != tool_id]
         return {"message": "删除成功"}
     res = _request("DELETE", f"/api/tools/{tool_id}")
-    return res if res else {"message": "删除失败"}
+    return res if res is not None else None
 
 # GET /api/tools/{tool_id}/diagnosis 刀具诊断报告
 def get_tool_diagnosis(tool_id):
