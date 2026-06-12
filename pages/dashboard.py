@@ -1,7 +1,7 @@
 from dash import html, dcc, callback, Input, Output
 import dash_bootstrap_components as dbc
 from components import cards, charts
-from api_client import get_tools, get_mock_data, get_aggregates, get_alerts
+from api_client import get_tools, get_tool_detail, get_mock_data, get_aggregates, get_alerts
 import pandas as pd
 import config
 
@@ -27,12 +27,8 @@ def register_dashboard_callbacks(app):
             total_tools = agg_data.get("total_tools", 0)
             warning_tools = agg_data.get("warning_tools", 0)
             danger_tools = agg_data.get("danger_tools", 0)
-            # 以下两个变量已不再使用，但保留计算，以便未来恢复
-            # avg_health = round(agg_data.get("avg_health", 0.0), 1)
-            # avg_rul = round(agg_data.get("avg_rul", 0.0), 1)
             healthy_tools = total_tools - warning_tools - danger_tools
 
-            # 统计卡片（仅保留4个）
             stats_row = dbc.Row([
                 dbc.Col(cards.stat_card("在线刀具", total_tools, "tools", "primary"), width=3),
                 dbc.Col(cards.stat_card("健康刀具", healthy_tools, "heartbeat", "success"), width=3),
@@ -40,13 +36,22 @@ def register_dashboard_callbacks(app):
                 dbc.Col(cards.stat_card("危险刀具", danger_tools, "exclamation-circle", "danger"), width=3),
             ], className="mb-4")
 
-            # 2. 刀具列表
+            # 2. 刀具列表，并补全 RUL
             tools = get_tools(page=1, page_size=200)
             tools_df = pd.DataFrame(tools)
 
             if tools_df.empty and config.USE_MOCK:
                 mock_data = get_mock_data()
                 tools_df = mock_data["tools"].copy()
+
+            # 用详情接口补全 RUL（后端列表接口不返回 rul）
+            if not tools_df.empty:
+                for i, row in tools_df.iterrows():
+                    tid = row.get("tool_id")
+                    if tid:
+                        detail = get_tool_detail(tid)
+                        if detail and detail.get("rul") is not None:
+                            tools_df.at[i, "rul"] = detail["rul"]
 
             for col in ["status", "health_score", "rul"]:
                 if col not in tools_df.columns:
