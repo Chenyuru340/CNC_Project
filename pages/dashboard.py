@@ -27,21 +27,21 @@ def register_dashboard_callbacks(app):
             total_tools = agg_data.get("total_tools", 0)
             warning_tools = agg_data.get("warning_tools", 0)
             danger_tools = agg_data.get("danger_tools", 0)
-            avg_health = round(agg_data.get("avg_health", 0.0), 1)
-            avg_rul = round(agg_data.get("avg_rul", 0.0), 1)
+            # 以下两个变量已不再使用，但保留计算，以便未来恢复
+            # avg_health = round(agg_data.get("avg_health", 0.0), 1)
+            # avg_rul = round(agg_data.get("avg_rul", 0.0), 1)
             healthy_tools = total_tools - warning_tools - danger_tools
 
+            # 统计卡片（仅保留4个）
             stats_row = dbc.Row([
-                dbc.Col(cards.stat_card("在线刀具", total_tools, "tools", "primary"), width=2),
-                dbc.Col(cards.stat_card("健康刀具", healthy_tools, "heartbeat", "success"), width=2),
-                dbc.Col(cards.stat_card("预警刀具", warning_tools, "exclamation-triangle", "warning"), width=2),
-                dbc.Col(cards.stat_card("危险刀具", danger_tools, "exclamation-circle", "danger"), width=2),
-                dbc.Col(cards.stat_card("平均健康度", avg_health, "activity", "info"), width=2),
-                dbc.Col(cards.stat_card("平均剩余寿命", avg_rul, "clock", "secondary"), width=2),
+                dbc.Col(cards.stat_card("在线刀具", total_tools, "tools", "primary"), width=3),
+                dbc.Col(cards.stat_card("健康刀具", healthy_tools, "heartbeat", "success"), width=3),
+                dbc.Col(cards.stat_card("预警刀具", warning_tools, "exclamation-triangle", "warning"), width=3),
+                dbc.Col(cards.stat_card("危险刀具", danger_tools, "exclamation-circle", "danger"), width=3),
             ], className="mb-4")
 
-            # 2. 刀具列表（删除二次 normalize）
-            tools = get_tools(page=1, page_size=200)  # 已经归一化，无需再调用 normalize_tool
+            # 2. 刀具列表
+            tools = get_tools(page=1, page_size=200)
             tools_df = pd.DataFrame(tools)
 
             if tools_df.empty and config.USE_MOCK:
@@ -52,13 +52,13 @@ def register_dashboard_callbacks(app):
                 if col not in tools_df.columns:
                     tools_df[col] = ""
 
-            # 3. 报警数据（用于新版UI）
-            alerts = get_alerts(page=1, page_size=100)  # 多取一些用于统计
+            # 3. 报警数据
+            alerts = get_alerts(page=1, page_size=100)
             total_alerts = len(alerts)
             unprocessed_count = len([a for a in alerts if a.get("handle_status") == "unprocessed"])
             processing_count = len([a for a in alerts if a.get("handle_status") == "processing"])
             processed_count = len([a for a in alerts if a.get("handle_status") == "processed"])
-            latest_alerts = alerts[:5]  # 只展示最近5条
+            latest_alerts = alerts[:5]
 
             # 报警统计横条
             alert_stats = dbc.Row([
