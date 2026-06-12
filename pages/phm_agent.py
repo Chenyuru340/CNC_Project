@@ -9,6 +9,7 @@ import config
 from api_client import post_agent, search_docs
 
 def parse_file(contents, filename):
+    """解析上传的文件，返回 DataFrame 或文本"""
     if not contents:
         return None
     content_type, content_string = contents.split(',')
@@ -75,8 +76,10 @@ def register_phm_agent_callbacks(app):
     def chat(click, submit, question, history, upload_data):
         if not question or not question.strip():
             return no_update, no_update, no_update
+
         history = history or []
-        # 知识库检索
+
+        # 知识库检索增强
         context = ""
         try:
             docs = search_docs(question)
@@ -84,23 +87,27 @@ def register_phm_agent_callbacks(app):
                 context = "\n".join([d.get("content", "")[:500] for d in docs])
         except:
             pass
-        # 构建增强问题
-        enhanced_q = f"知识库内容：{context}\n用户问题：{question}"
+
+        # 构建增强消息（包含知识库上下文和上传文件摘要）
+        enhanced_msg = question
+        if context:
+            enhanced_msg = f"知识库参考：\n{context}\n\n用户问题：{question}"
         if upload_data:
-            enhanced_q += f"\n上传文件数据摘要：{upload_data.get('data', '')[:1000]}"
+            enhanced_msg += f"\n\n上传文件数据摘要：{upload_data.get('data', '')[:1000]}"
+
+        # 调用智能体接口（tool_id 固定为 "global"，Agent 自行解析消息中的刀具编号）
         try:
-            answer, figure = post_agent("global", enhanced_q, None)
+            reply, _ = post_agent("global", enhanced_msg)
         except Exception as e:
-            answer = f"调用失败：{str(e)}"
-            figure = None
-        history.append({"user": question, "agent": answer, "figure": figure})
-        # 渲染
+            reply = f"调用失败：{str(e)}"
+
+        history.append({"user": question, "agent": reply})
+
+        # 渲染聊天记录（无图表）
         msgs = []
         for item in history:
             msgs.append(dbc.Alert(f"你：{item['user']}", color="secondary"))
             msgs.append(dbc.Alert(f"智能体：{item['agent']}", color="info"))
-            if item.get("figure"):
-                msgs.append(dcc.Graph(figure=item["figure"]))
         return msgs, "", history
 
     @app.callback(

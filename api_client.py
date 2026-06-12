@@ -369,24 +369,28 @@ def get_tool_features(tool_id: str):
     return {"rms": [], "kurtosis": [], "mean": [], "variance": []}
 
 # POST /api/phm/agent
-def post_agent(tool_id, question, file_info=None):
+# POST /api/agent/chat （替换原来的 post_agent）
+def post_agent(tool_id: str, message: str):
+    """调用智能体聊天接口
+    :param tool_id: 刀具ID或全局标识，例如 "global"
+    :param message: 用户消息（已包含知识库上下文）
+    :return: (reply_text, None)  第二个值固定为None，因为新接口不返回图表
+    """
     if config.USE_MOCK:
         from utils.helpers import agent_response
-        return agent_response(question, file_info)
-    url = f"{BASE_URL}/api/phm/agent"
-    data = {"tool_id": tool_id, "question": question}
-    files = None
+        # 模拟调用，保持兼容
+        return agent_response(message, None)
+
+    url = f"{BASE_URL}/api/agent/chat"
+    payload = {"message": message, "tool_id": tool_id}
     try:
-        if file_info and file_info.get("content"):
-            files = {"file": (file_info["filename"], file_info["content"])}
-            resp = requests.post(url, data=data, files=files, timeout=30)
-        else:
-            resp = requests.post(url, json=data, timeout=30)
+        resp = requests.post(url, json=payload, timeout=30)
         resp.raise_for_status()
         result = resp.json()
-        return result.get("answer", ""), result.get("figure", None)
+        reply = result.get("reply", "")
+        return reply, None
     except Exception as e:
-        print(f"phm_agent 错误: {e}")
+        print(f"agent chat 错误: {e}")
         return "接口异常", None
 
 # GET /api/settings

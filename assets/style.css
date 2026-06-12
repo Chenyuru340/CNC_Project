@@ -299,6 +299,7 @@ input:focus, textarea:focus, .form-control:focus {
 ::-webkit-scrollbar-track { background: #0f1a24; }
 ::-webkit-scrollbar-thumb { background: #1e4a6e; border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: #0dcaf0; }
+
 /* ========== 统一字体 ========== */
 * {
     font-family: "Microsoft YaHei", "微软雅黑", sans-serif !important;
@@ -321,7 +322,6 @@ input:focus, textarea:focus, .form-control:focus {
     background-color: #111827;
     border-right: 1px solid #2a3a5c;
 }
-
 .monitoring-middle-col {
     background: radial-gradient(circle at 20% 30%, #1a2332, #0c111c);
 }
@@ -341,4 +341,39 @@ input:focus, textarea:focus, .form-control:focus {
 .phm-chat-input {
     padding: 15px;
     border-top: 1px solid #2a4a6a;
+}
+
+/* ==================== 终极下拉框可视性强化 ==================== */
+/* 覆盖所有可能的 react-select 子元素，确保深色主题下文字绝对清晰 */
+div[class*="Select__control"] {
+    background-color: #0f1a24 !important;
+    border-color: #2a4a6a !important;
+}
+div[class*="Select__value-container"] > div[class*="Select__single-value"],
+div[class*="Select__value-container"] > div[class*="Select__multi-value__label"] {
+    color: #ffffff !important;
+}
+div[class*="Select__placeholder"] {
+    color: #a0aec0 !important;
+}
+div[class*="Select__menu"] {
+    background-color: #1a2332 !important;
+    z-index: 99999 !important;
+}
+div[class*="Select__option"] {
+    background-color: #1a2332 !important;
+    color: #ffffff !important;
+}
+div[class*="Select__option"]:hover {
+    background-color: #0d6efd !important;
+}
+div[class*="Select__multi-value"] {
+    background-color: #0d6efd !important;
+}
+div[class*="Select__multi-value__remove"] {
+    background-color: #0a58ca !important;
+    color: white !important;
+}
+div[class*="Select__input"] input {
+    color: #ffffff !important;
 }

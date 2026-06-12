@@ -1,3 +1,4 @@
+# pages/fault_diagnosis.py
 import dash
 from dash import html, dcc, Input, Output, State, callback, no_update, ctx
 import dash_bootstrap_components as dbc
@@ -9,11 +10,10 @@ import numpy as np
 from scipy.signal import spectrogram, hilbert
 
 import config
-# 恢复导入后端诊断接口函数
-# from api_client import post_diagnosis_analysis
 
 # ---------- 辅助函数 ----------
 def parse_uploaded_file(contents, filename):
+    """解析上传的CSV或Parquet文件，返回DataFrame"""
     if contents is None:
         return None
     content_type, content_string = contents.split(',')
@@ -30,56 +30,76 @@ def parse_uploaded_file(contents, filename):
         print(f"文件解析失败: {e}")
         return None
 
-def generate_mock_analysis(active_tab, signal, params):
-    # 注意：这个函数仅在 USE_MOCK=True 时使用，真实模式下不会调用
+def generate_analysis(active_tab, signal, params):
+    """
+    本地信号分析（时域/频域/时频域），返回 plotly Figure
+    参数 params:
+        - features: list (时域特征名称)
+        - sample_rate: int (采样率)
+        - freq_type: str ("fft" 或 "envelope")
+        - nperseg: int (STFT窗口长度)
+    """
     if active_tab == "time":
         features = params.get("features", ["均值", "均方根"])
+        # 计算所选特征的标量值，并生成等长常数曲线以便绘制趋势（原有设计）
         feat_vals = {}
         for feat in features:
             if feat == "均值":
-                vals = [np.mean(signal)] * len(signal)
+                vals = np.full(len(signal), np.mean(signal))
             elif feat == "方差":
-                vals = [np.var(signal)] * len(signal)
+                vals = np.full(len(signal), np.var(signal))
             elif feat == "峰值":
-                vals = [np.max(np.abs(signal))] * len(signal)
+                vals = np.full(len(signal), np.max(np.abs(signal)))
             elif feat == "峭度":
+                # 原始峭度（峰度），非超额峭度
                 kurt = np.mean((signal - np.mean(signal))**4) / (np.std(signal)**4 + 1e-8)
-                vals = [kurt] * len(signal)
+                vals = np.full(len(signal), kurt)
             elif feat == "均方根":
-                vals = [np.sqrt(np.mean(signal**2))] * len(signal)
+                vals = np.full(len(signal), np.sqrt(np.mean(signal**2)))
             else:
                 continue
             feat_vals[feat] = vals
+
         fig = go.Figure()
         for feat, vals in feat_vals.items():
             fig.add_trace(go.Scatter(x=list(range(len(signal))), y=vals, mode='lines', name=feat))
         fig.update_layout(
-            title="时域特征曲线", xaxis_title="样本序号", yaxis_title="特征值",
-            template="plotly_dark", height=450,
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0)'
+            title="时域特征曲线",
+            xaxis_title="样本序号",
+            yaxis_title="特征值",
+            template="plotly_dark",
+            height=450,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0)'
         )
         return fig
+
     elif active_tab == "freq":
         sr = params.get("sample_rate", 25600)
         freq_type = params.get("freq_type", "fft")
         if freq_type == "fft":
             freqs = np.fft.rfftfreq(len(signal), d=1/sr)
             amps = np.abs(np.fft.rfft(signal))
-        else:
+        else:  # envelope
             analytic = hilbert(signal)
             envelope = np.abs(analytic)
             freqs = np.fft.rfftfreq(len(envelope), d=1/sr)
             amps = np.abs(np.fft.rfft(envelope))
+
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=freqs, y=amps, mode='lines', fill='tozeroy'))
         fig.update_layout(
             title=f"{'包络谱' if freq_type=='envelope' else '频谱'}分析",
-            xaxis_title="频率 (Hz)", yaxis_title="幅值",
-            template="plotly_dark", height=450,
-            paper_bgcolor='rgba(0,0,0)', plot_bgcolor='rgba(0,0,0)'
+            xaxis_title="频率 (Hz)",
+            yaxis_title="幅值",
+            template="plotly_dark",
+            height=450,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0)'
         )
         return fig
-    else:
+
+    else:  # stft
         sr = params.get("sample_rate", 25600)
         nperseg = params.get("nperseg", 256)
         f, t, Sxx = spectrogram(signal, sr, nperseg=nperseg)
@@ -88,13 +108,18 @@ def generate_mock_analysis(active_tab, signal, params):
             colorscale='Viridis', name='STFT'
         ))
         fig.update_layout(
-            title="STFT 时频图谱", xaxis_title="时间 (s)", yaxis_title="频率 (Hz)",
-            template="plotly_dark", height=450,
-            paper_bgcolor='rgba(0,0,0)', plot_bgcolor='rgba(0,0,0)'
+            title="STFT 时频图谱",
+            xaxis_title="时间 (s)",
+            yaxis_title="频率 (Hz)",
+            template="plotly_dark",
+            height=450,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0)'
         )
         return fig
 
 def create_fault_diagnosis_page():
+    """构建故障诊断页面布局"""
     return html.Div([
         dcc.Store(id="diagnosis-data-store", data={}),
         html.Div([
@@ -226,13 +251,17 @@ def register_fault_diagnosis_callbacks(app):
             return {}, "未上传文件", [], None, True, no_update, ""
         df = parse_uploaded_file(contents, filename)
         if df is None:
-            return {}, "不支持的文件类型", [], None, True, dbc.Alert("文件格式不支持，请上传 CSV 或 Parquet", color="danger"), ""
+            return {}, "不支持的文件类型", [], None, True, \
+                   dbc.Alert("文件格式不支持，请上传 CSV 或 Parquet", color="danger"), ""
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
         if not numeric_cols:
-            return {}, f"已上传: {filename} (无数值列)", [], None, True, dbc.Alert("文件中没有数值型信号通道", color="warning"), ""
+            return {}, f"已上传: {filename} (无数值列)", [], None, True, \
+                   dbc.Alert("文件中没有数值型信号通道", color="warning"), ""
         store_data = {"contents": contents, "filename": filename}
         options = [{"label": col, "value": col} for col in numeric_cols]
-        return store_data, f"✅ {filename} ({len(df)} 行, {len(numeric_cols)} 通道)", options, numeric_cols[0], False, dbc.Alert("文件就绪，请开始分析", color="success"), ""
+        return store_data, f"✅ {filename} ({len(df)} 行, {len(numeric_cols)} 通道)", \
+               options, numeric_cols[0], False, \
+               dbc.Alert("文件就绪，请开始分析", color="success"), ""
 
     @app.callback(
         [Output("diagnosis-data-store", "data", allow_duplicate=True),
@@ -247,7 +276,8 @@ def register_fault_diagnosis_callbacks(app):
     )
     def clear_file(n_clicks):
         if n_clicks:
-            return {}, "未上传文件", [], None, True, dbc.Alert("已清除文件，请重新上传", color="info"), ""
+            return {}, "未上传文件", [], None, True, \
+                   dbc.Alert("已清除文件，请重新上传", color="info"), ""
         return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     @app.callback(
@@ -263,60 +293,36 @@ def register_fault_diagnosis_callbacks(app):
         prevent_initial_call=True
     )
     def run_analysis(n_clicks, store_data, channel, active_tab, time_features, freq_type, freq_sr, stft_sr):
+        # 基本检查
         if not store_data or "contents" not in store_data:
             return dbc.Alert("请先上传文件", color="warning")
         if not channel:
             return dbc.Alert("请选择信号通道", color="warning")
+
         df = parse_uploaded_file(store_data["contents"], store_data["filename"])
         if df is None:
             return dbc.Alert("数据解析失败", color="danger")
         if channel not in df.columns:
             return dbc.Alert(f"通道 {channel} 不存在", color="danger")
+
         signal = df[channel].dropna().values
         if len(signal) < 10:
             return dbc.Alert("信号过短，无法分析", color="warning")
 
-        # # 真实模式：调用后端接口 /diagnosis/analyze
-        # if not config.USE_MOCK:
-        #     result = post_diagnosis_analysis(
-        #         file_base64=store_data["contents"].split(',')[1],
-        #         filename=store_data["filename"],
-        #         channel=channel,
-        #         analysis_type=active_tab,
-        #         params={
-        #             "features": time_features if active_tab == "time" else None,
-        #             "freq_type": freq_type if active_tab == "freq" else None,
-        #             "sample_rate": freq_sr if active_tab == "freq" else stft_sr if active_tab == "stft" else None
-        #         }
-        #     )
-        #     if "error" in result:
-        #         return dbc.Alert(f"分析失败: {result['error']}", color="danger")
-        #     if "figure" in result:
-        #         try:
-        #             fig_json = result["figure"]
-        #             # 如果后端返回的是字符串，尝试解析为 JSON
-        #             if isinstance(fig_json, str):
-        #                 import json
-        #                 fig_json = json.loads(fig_json)
-        #             # 直接传给 dcc.Graph 渲染
-        #             return dcc.Graph(figure=fig_json, style={"height": "500px", "width": "100%"})
-        #         except Exception as e:
-        #             return dbc.Alert(f"图表数据解析错误: {str(e)}", color="danger")
-        #     else:
-        #         return dbc.Alert("后端未返回图表数据", color="danger")
-        # 真实环境：接口文档无故障诊断后端接口，功能暂未开放
-        if not config.USE_MOCK:
-            return dbc.Alert("故障诊断后端接口暂未开发，敬请期待", color="warning")
-        # 模拟模式：前端本地计算绘图（本地调试用）
-        else:
-            params = {}
-            if active_tab == "time":
-                params["features"] = time_features
-            elif active_tab == "freq":
-                params["sample_rate"] = freq_sr if freq_sr else 25600
-                params["freq_type"] = freq_type
-            else:
-                params["sample_rate"] = stft_sr if stft_sr else 25600
-                params["nperseg"] = 256
-            fig = generate_mock_analysis(active_tab, signal, params)
+        # 组装参数
+        params = {}
+        if active_tab == "time":
+            params["features"] = time_features
+        elif active_tab == "freq":
+            params["sample_rate"] = freq_sr if freq_sr else 25600
+            params["freq_type"] = freq_type
+        else:  # stft
+            params["sample_rate"] = stft_sr if stft_sr else 25600
+            params["nperseg"] = 256
+
+        # 本地计算（同时支持 Mock 和真实环境）
+        try:
+            fig = generate_analysis(active_tab, signal, params)
             return dcc.Graph(figure=fig, style={"height": "500px", "width": "100%"})
+        except Exception as e:
+            return dbc.Alert(f"分析计算失败: {str(e)}", color="danger")
