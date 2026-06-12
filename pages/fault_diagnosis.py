@@ -161,7 +161,12 @@ def create_fault_diagnosis_page():
                             id="diagnosis-channel",
                             placeholder="请先上传文件",
                             className="mb-3 dash-dropdown",
-                            clearable=False
+                            clearable=False,
+                            style={
+                                "backgroundColor": "#0f1a24",
+                                "color": "#ffffff",
+                                "border": "1px solid #2a4a6a"
+                            }
                         ),
                         dbc.Tabs([
                             dbc.Tab(label="时域分析", tab_id="time", children=[
@@ -177,7 +182,12 @@ def create_fault_diagnosis_page():
                                     ],
                                     multi=True,
                                     value=["均值", "均方根"],
-                                    className="mb-2 dash-dropdown"
+                                    className="mb-2 dash-dropdown",
+                                    style={
+                                        "backgroundColor": "#0f1a24",
+                                        "color": "#ffffff",
+                                        "border": "1px solid #2a4a6a"
+                                    }
                                 )
                             ]),
                             dbc.Tab(label="频域分析", tab_id="freq", children=[
