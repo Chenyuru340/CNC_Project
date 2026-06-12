@@ -343,37 +343,67 @@ input:focus, textarea:focus, .form-control:focus {
     border-top: 1px solid #2a4a6a;
 }
 
-/* ==================== 终极下拉框可视性强化 ==================== */
-/* 覆盖所有可能的 react-select 子元素，确保深色主题下文字绝对清晰 */
+/* ========== 下拉框终极强制深色修复 ========== */
+/* 确保下拉控件背景深色，文字白色，无论如何都不会被覆盖 */
+.Select__control,
+.dash-dropdown .Select__control,
 div[class*="Select__control"] {
     background-color: #0f1a24 !important;
     border-color: #2a4a6a !important;
+    box-shadow: none !important;
 }
-div[class*="Select__value-container"] > div[class*="Select__single-value"],
-div[class*="Select__value-container"] > div[class*="Select__multi-value__label"] {
+.Select__value-container,
+.dash-dropdown .Select__value-container,
+div[class*="Select__value-container"] {
+    background-color: #0f1a24 !important;
+}
+.Select__single-value,
+.dash-dropdown .Select__single-value,
+div[class*="Select__single-value"] {
     color: #ffffff !important;
 }
+.Select__placeholder,
+.dash-dropdown .Select__placeholder,
 div[class*="Select__placeholder"] {
     color: #a0aec0 !important;
 }
+.Select__menu,
+.dash-dropdown .Select__menu,
 div[class*="Select__menu"] {
     background-color: #1a2332 !important;
+    border: 1px solid #2a4a6a !important;
     z-index: 99999 !important;
 }
+.Select__option,
+.dash-dropdown .Select__option,
 div[class*="Select__option"] {
     background-color: #1a2332 !important;
     color: #ffffff !important;
 }
+.Select__option:hover,
+.dash-dropdown .Select__option:hover,
 div[class*="Select__option"]:hover {
     background-color: #0d6efd !important;
+    color: #ffffff !important;
 }
+.Select__multi-value,
+.dash-dropdown .Select__multi-value,
 div[class*="Select__multi-value"] {
     background-color: #0d6efd !important;
 }
+.Select__multi-value__label,
+.dash-dropdown .Select__multi-value__label,
+div[class*="Select__multi-value__label"] {
+    color: #ffffff !important;
+}
+.Select__multi-value__remove,
+.dash-dropdown .Select__multi-value__remove,
 div[class*="Select__multi-value__remove"] {
     background-color: #0a58ca !important;
-    color: white !important;
-}
-div[class*="Select__input"] input {
     color: #ffffff !important;
+}
+.Select__indicator svg,
+.dash-dropdown .Select__indicator svg,
+div[class*="Select__indicator"] svg {
+    fill: #b0c7e0 !important;
 }
