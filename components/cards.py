@@ -108,7 +108,7 @@ def tool_card(tool):
                 ], className="d-flex align-items-center")
             ]),
             dbc.CardBody([
-                html.P(f"机床: {tool.get('machine', '-')}", className="mb-2 small", style={"fontFamily": "Microsoft YaHei"}),
+                html.P(f"机床: {tool.get('machine') or '未知机床'}", className="mb-2 small", style={"fontFamily": "Microsoft YaHei"}),
                 html.P(f"剩余寿命: {rul_display}", className="mb-2 small", style={"fontFamily": "Microsoft YaHei"}),
                 html.Small(f"健康度: {health:.1f} 分", className="text-muted", style={"fontFamily": "Microsoft YaHei"})
             ])
@@ -131,6 +131,10 @@ def tool_card_simple(tool):
     else:
         rul_display = f"{rul}分钟"
 
+    # 友好显示缺失字段
+    machine_display = tool.get("machine") or "未知机床"
+    tool_type = tool.get("type") or "未知"
+
     return dbc.Col(
         dbc.Card([
             dbc.CardHeader([
@@ -138,7 +142,8 @@ def tool_card_simple(tool):
             ]),
             dbc.CardBody([
                 dbc.Badge(status_text, color=status_color, className="mb-2"),
-                html.P(f"机床：{tool.get('machine', '-')}", className="small mb-2", style={"fontFamily": "Microsoft YaHei"}),
+                html.P(f"机床：{machine_display}", className="small mb-2", style={"fontFamily": "Microsoft YaHei"}),
+                html.P(f"类型：{tool_type}", className="small mb-2", style={"fontFamily": "Microsoft YaHei"}),
                 html.P(f"剩余寿命：{rul_display}", className="small mb-0", style={"fontFamily": "Microsoft YaHei"})
             ])
         ], className="shadow-sm h-100"),

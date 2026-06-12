@@ -26,7 +26,6 @@ TOOL_STATUS_FROM_API = {
     "danger": "danger",
 }
 
-# 报警字段中英文映射
 def normalize_alert(alert: Dict) -> Dict:
     level_map = {"危险": "danger", "警告": "warning", "预警": "warning", "信息": "info"}
     status_map = {"未处理": "unprocessed", "处理中": "processing", "已处理": "processed"}
@@ -34,7 +33,6 @@ def normalize_alert(alert: Dict) -> Dict:
     alert["handle_status"] = status_map.get(alert.get("handle_status"), alert.get("handle_status"))
     return alert
 
-# 刀具字段格式化、状态映射、数值兜底
 def normalize_tool(tool: Dict):
     if not isinstance(tool, dict):
         return {}
@@ -59,7 +57,6 @@ def normalize_tool(tool: Dict):
         "rul": safe_float(tool.get("rul", 0))
     }
 
-
 def safe_float(value, default=0.0):
     try:
         if value is None or value == "":
@@ -68,14 +65,12 @@ def safe_float(value, default=0.0):
     except Exception:
         return default
 
-
 def infer_status_from_health(health_score):
     if health_score >= 80:
         return "normal"
     if health_score >= 50:
         return "warning"
     return "danger"
-
 
 def build_aggregates_from_tools(tools):
     tools = [normalize_tool(t) for t in tools if isinstance(t, dict)]
@@ -94,7 +89,6 @@ def build_aggregates_from_tools(tools):
         "avg_health": avg_health,
         "avg_rul": avg_rul,
     }
-
 
 def build_alerts_from_tools(tools):
     alerts = []
@@ -117,22 +111,18 @@ def build_alerts_from_tools(tools):
         })
     return alerts
 
-# 加载全局模拟数据
 def get_mock_data():
     global _mock_data_cache
     if _mock_data_cache is None:
         _mock_data_cache = generate_mock_data()
     return _mock_data_cache
 
-# 通用请求函数（核心修复：移除data/items外层截取，完全遵循接口规范）
 def _request(method: str, endpoint: str, params=None, json_data=None):
     url = f"{BASE_URL}{endpoint}"
     headers = {}
-    # POST/DELETE 附加JSON请求头，GET 无请求头（适配Linux服务器）
     if method in ("POST", "DELETE"):
         headers = {"Content-Type": "application/json"}
 
-    # 过滤空参数
     if params:
         params = {k: v for k, v in params.items() if v is not None}
 
@@ -153,7 +143,6 @@ def _request(method: str, endpoint: str, params=None, json_data=None):
             print("接口返回非JSON格式数据")
             return None
 
-        # 规范：错误码统一判断，正常数据直接返回（无data/items外层包装）
         if isinstance(body, dict) and "code" in body and body["code"] == 500:
             print(f"接口业务错误: {body.get('message', '未知错误')}")
             return None
@@ -173,8 +162,7 @@ def _request(method: str, endpoint: str, params=None, json_data=None):
         print(f"接口未知异常: {str(e)}")
         return None
 
-# -------------------------- 1. 刀具相关接口 --------------------------
-# GET /api/tools 刀具列表
+# GET /api/tools
 def get_tools(status=None, machine=None, sort_by="health_score", order="desc", page=1, page_size=20):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -201,7 +189,7 @@ def get_tools(status=None, machine=None, sort_by="health_score", order="desc", p
         tools = [t for t in tools if t.get("machine") == machine]
     return tools
 
-# GET /api/tools/aggregates 聚合指标
+# GET /api/tools/aggregates （健壮性增强）
 def get_aggregates():
     if config.USE_MOCK:
         data = get_mock_data()
@@ -216,12 +204,15 @@ def get_aggregates():
             "avg_rul": round(df["rul"].mean(), 1)
         }
     res = _request("GET", "/api/tools/aggregates")
-    if isinstance(res, dict):
+    # 健壮性校验：返回必须是dict且包含核心字段，否则自动降级
+    if isinstance(res, dict) and "total_tools" in res and "avg_health" in res:
         return res
+    # 降级：从刀具列表自行计算
+    print("聚合接口无效，降级使用本地计算")
     tools = get_tools(page=1, page_size=1000)
     return build_aggregates_from_tools(tools)
 
-# GET /api/features 特征曲线（删除多余features入参）
+# GET /api/features
 def get_features(tool_id=None, days=30):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -236,7 +227,7 @@ def get_features(tool_id=None, days=30):
     params = {"tool_id": tool_id, "days": days}
     return _request("GET", "/api/features", params=params) or []
 
-# GET /api/alerts 报警列表
+# GET /api/alerts
 def get_alerts(handle_status=None, level=None, page=1, page_size=20):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -266,7 +257,7 @@ def get_alerts(handle_status=None, level=None, page=1, page_size=20):
     end = start + page_size
     return alerts[start:end]
 
-# GET /api/tools/{tool_id} 单刀具详情
+# GET /api/tools/{tool_id}
 def get_tool_detail(tool_id):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -278,7 +269,7 @@ def get_tool_detail(tool_id):
 def get_tool_by_id(tool_id):
     return get_tool_detail(tool_id)
 
-# POST /api/tools 新增刀具
+# POST /api/tools
 def add_tool(tool_data):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -291,7 +282,7 @@ def add_tool(tool_data):
     })
     return normalize_tool(res) if res else {}
 
-# DELETE /api/tools/{tool_id} 删除刀具
+# DELETE /api/tools/{tool_id}
 def delete_tool(tool_id):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -300,7 +291,7 @@ def delete_tool(tool_id):
     res = _request("DELETE", f"/api/tools/{tool_id}")
     return res if res is not None else None
 
-# GET /api/tools/{tool_id}/diagnosis 刀具诊断报告
+# GET /api/tools/{tool_id}/diagnosis
 def get_tool_diagnosis(tool_id):
     if config.USE_MOCK:
         return {
@@ -311,7 +302,7 @@ def get_tool_diagnosis(tool_id):
         }
     return _request("GET", f"/api/tools/{tool_id}/diagnosis") or {}
 
-# GET /api/tools/{tool_id}/spectrum 振动频谱
+# GET /api/tools/{tool_id}/spectrum
 def get_spectrum(tool_id):
     if config.USE_MOCK:
         return {"frequencies": [], "amplitudes": []}
@@ -321,7 +312,7 @@ def get_spectrum(tool_id):
         "amplitudes": [r["amp"] for r in res]
     }
 
-# GET /api/tools/{tool_id}/history 刀具历史健康数据
+# GET /api/tools/{tool_id}/history
 def get_tool_history(tool_id: str, days: int = 30):
     if config.USE_MOCK:
         data = get_mock_data()
@@ -342,7 +333,7 @@ def get_tool_history(tool_id: str, days: int = 30):
         }
     return {"time": [], "health": [], "hi": [], "rul": []}
 
-# GET /api/tools/{tool_id}/vibration 振动时序数据
+# GET /api/tools/{tool_id}/vibration
 def get_tool_vibration(tool_id: str, start_time: str = None, end_time: str = None):
     if config.USE_MOCK:
         return {"time": [], "vibration_x": [], "vibration_y": [], "vibration_z": []}
@@ -356,7 +347,7 @@ def get_tool_vibration(tool_id: str, start_time: str = None, end_time: str = Non
         return res
     return {"time": [], "vibration_x": [], "vibration_y": [], "vibration_z": []}
 
-# GET /api/tools/{tool_id}/features 单刀具特征指标
+# GET /api/tools/{tool_id}/features
 def get_tool_features(tool_id: str):
     if config.USE_MOCK:
         return {"rms": [], "kurtosis": [], "mean": [], "variance": []}
@@ -365,8 +356,7 @@ def get_tool_features(tool_id: str):
         return res
     return {"rms": [], "kurtosis": [], "mean": [], "variance": []}
 
-# -------------------------- 2. PHM 智能体接口 --------------------------
-# POST /api/phm/agent 智能体交互
+# POST /api/phm/agent
 def post_agent(tool_id, question, file_info=None):
     if config.USE_MOCK:
         from utils.helpers import agent_response
@@ -387,19 +377,18 @@ def post_agent(tool_id, question, file_info=None):
         print(f"phm_agent 错误: {e}")
         return "接口异常", None
 
-# -------------------------- 3. 系统设置接口 --------------------------
-# GET /api/settings 获取设置
+# GET /api/settings
 def get_settings():
     return _request("GET", "/api/settings") or {"refresh_interval": 30, "alert_threshold": 40}
 
-# POST /api/settings 保存设置
+# POST /api/settings
 def save_settings(refresh_interval, alert_threshold):
     return _request("POST", "/api/settings", json_data={
         "refresh_interval": refresh_interval,
         "alert_threshold": alert_threshold
     }) or {}
 
-# -------------------------- 4. 知识库全套接口（新增补齐） --------------------------
+# 知识库相关接口（保持不变）
 _mock_docs = [
     {
         "filename": "刀具磨损故障分析.md",
@@ -415,7 +404,6 @@ _mock_docs = [
     }
 ]
 
-# GET /api/docs/search 知识库检索
 def search_docs(query):
     if config.USE_MOCK:
         results = []
@@ -428,7 +416,6 @@ def search_docs(query):
     res = _request("GET", "/api/docs/search", params={"q": query}) or []
     return [{"filename": r.get("filename", ""), "content": r.get("content", "")} for r in res]
 
-# GET /api/docs/list 获取文档列表
 def get_docs_list():
     if config.USE_MOCK:
         return [
@@ -437,7 +424,6 @@ def get_docs_list():
         ]
     return _request("GET", "/api/docs/list") or []
 
-# GET /api/docs/detail 获取文档详情
 def get_doc_detail(filename):
     if config.USE_MOCK:
         for doc in _mock_docs:
@@ -446,7 +432,6 @@ def get_doc_detail(filename):
         return {"filename": "", "content": ""}
     return _request("GET", "/api/docs/detail", params={"filename": filename}) or {"filename": "", "content": ""}
 
-# POST /api/docs/add 新增/更新文档
 def add_doc(filename, content):
     if config.USE_MOCK:
         global _mock_docs
@@ -468,7 +453,6 @@ def add_doc(filename, content):
         return {"message": "保存成功"}
     return _request("POST", "/api/docs/add", json_data={"filename": filename, "content": content}) or {}
 
-# POST /api/docs/delete 删除文档
 def delete_doc(filename):
     if config.USE_MOCK:
         global _mock_docs
@@ -476,7 +460,6 @@ def delete_doc(filename):
         return {"message": "删除成功"}
     return _request("POST", "/api/docs/delete", json_data={"filename": filename}) or {}
 
-# -------------------------- 5. 前端内部聚合函数（非对外接口，保留） --------------------------
 def get_monitoring_status():
     aggregates = get_aggregates()
     alerts = get_alerts(handle_status="unprocessed", page=1, page_size=100)

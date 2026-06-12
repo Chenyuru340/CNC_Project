@@ -1,7 +1,4 @@
-# Python缓存文件
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.log
-.env
+__pycache__/ 
+*.pyc 
+*.pyo 
+.env 
