@@ -164,7 +164,7 @@ def create_fault_diagnosis_page():
                             clearable=False,
                             style={
                                 "backgroundColor": "#0f1a24",
-                                "color": "#ffffff",
+                                "color": "#000000",
                                 "border": "1px solid #2a4a6a"
                             }
                         ),
@@ -185,7 +185,7 @@ def create_fault_diagnosis_page():
                                     className="mb-2 dash-dropdown",
                                     style={
                                         "backgroundColor": "#0f1a24",
-                                        "color": "#ffffff",
+                                        "color": "#000000",
                                         "border": "1px solid #2a4a6a"
                                     }
                                 )
