@@ -271,15 +271,20 @@ def get_tool_by_id(tool_id):
 
 # POST /api/tools
 def add_tool(tool_data):
+    """新增刀具，发送 tool_id, machine, type, manufacturer"""
     if config.USE_MOCK:
         data = get_mock_data()
         df = data["tools"]
         data["tools"] = pd.concat([df, pd.DataFrame([tool_data])], ignore_index=True)
         return tool_data
-    res = _request("POST", "/api/tools", json_data={
-        "tool_id": tool_data.get("tool_id"),
-        "machine": tool_data.get("machine")
-    })
+
+    payload = {
+        "tool_id": tool_data.get("tool_id", ""),
+        "machine": tool_data.get("machine", ""),
+        "type": tool_data.get("type", "铣刀"),
+        "manufacturer": tool_data.get("manufacturer", "")
+    }
+    res = _request("POST", "/api/tools", json_data=payload)
     return normalize_tool(res) if res else {}
 
 # DELETE /api/tools/{tool_id}
@@ -404,7 +409,12 @@ def save_settings(refresh_interval, alert_threshold):
         "alert_threshold": alert_threshold
     }) or {}
 
-# 知识库相关接口（保持不变）
+# -------------------------- 4. 知识库接口（对齐后端 /api/docs） --------------------------
+# 注意：后端实际提供：
+#   GET  /api/docs/search?q=...      返回 {"query":"...","results":[{filename,content}]}
+#   POST /api/docs/upload            上传文件 (multipart/form-data, 字段名 file)
+# 未实现：列表、详情、删除接口，前端暂时用 Mock 降级
+
 _mock_docs = [
     {
         "filename": "刀具磨损故障分析.md",
@@ -420,6 +430,7 @@ _mock_docs = [
     }
 ]
 
+# GET /api/docs/search  知识库检索（已实现）
 def search_docs(query):
     if config.USE_MOCK:
         results = []
@@ -429,52 +440,113 @@ def search_docs(query):
         if not results:
             results = [{"filename": doc["filename"], "content": doc["content"][:1000]} for doc in _mock_docs[:2]]
         return results
-    res = _request("GET", "/api/docs/search", params={"q": query}) or []
-    return [{"filename": r.get("filename", ""), "content": r.get("content", "")} for r in res]
 
+    res = _request("GET", "/api/docs/search", params={"q": query})
+    if not res or not isinstance(res, dict):
+        return []
+    # 新接口返回格式: {"query":"...", "results": [{"filename":"...","content":"..."}]}
+    items = res.get("results", [])
+    return [{"filename": r.get("filename", ""), "content": r.get("content", "")} for r in items]
+
+
+# POST /api/docs/upload  上传文件（已实现）
+def upload_doc(filename: str, file_content: bytes):
+    """上传文件到知识库
+    :param filename: 文件名（含扩展名）
+    :param file_content: 文件二进制内容
+    """
+    if config.USE_MOCK:
+        global _mock_docs
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        # 模拟：直接存储为 mock 文档
+        try:
+            text = file_content.decode("utf-8", errors="ignore")[:2000]
+        except:
+            text = f"[二进制文件 {filename}]"
+        for doc in _mock_docs:
+            if doc["filename"] == filename:
+                doc["content"] = text
+                doc["updated_at"] = now
+                return {"message": "保存成功"}
+        _mock_docs.append({
+            "filename": filename,
+            "updated_at": now,
+            "chunks": max(1, len(text) // 200),
+            "content": text
+        })
+        return {"message": "上传成功"}
+
+    # 真实模式：调用 POST /api/docs/upload，multipart/form-data
+    url = f"{BASE_URL}/api/docs/upload"
+    try:
+        files = {"file": (filename, file_content)}
+        resp = requests.post(url, files=files, timeout=30)
+        resp.raise_for_status()
+        # 后端可能返回字符串或 JSON
+        try:
+            return resp.json()
+        except:
+            return {"message": resp.text}
+    except Exception as e:
+        print(f"上传文档失败: {e}")
+        return None
+
+
+# GET /api/docs/list  文档列表（后端未实现，降级为 Mock）
 def get_docs_list():
     if config.USE_MOCK:
         return [
             {"filename": d["filename"], "updated_at": d["updated_at"], "chunks": d["chunks"]}
             for d in _mock_docs
         ]
-    return _request("GET", "/api/docs/list") or []
+    # 尝试请求真实接口，若失败返回空列表
+    res = _request("GET", "/api/docs/list")
+    if isinstance(res, list):
+        return res
+    print("文档列表接口未实现，使用本地缓存")
+    # 返回 mock 数据作为临时方案
+    return [
+        {"filename": d["filename"], "updated_at": d["updated_at"], "chunks": d["chunks"]}
+        for d in _mock_docs
+    ]
 
+
+# GET /api/docs/detail  文档详情（后端未实现，降级为 Mock）
 def get_doc_detail(filename):
     if config.USE_MOCK:
         for doc in _mock_docs:
             if doc["filename"] == filename:
                 return {"filename": doc["filename"], "content": doc["content"]}
         return {"filename": "", "content": ""}
-    return _request("GET", "/api/docs/detail", params={"filename": filename}) or {"filename": "", "content": ""}
+    res = _request("GET", "/api/docs/detail", params={"filename": filename})
+    if isinstance(res, dict) and "content" in res:
+        return res
+    print("文档详情接口未实现，从缓存查找")
+    for doc in _mock_docs:
+        if doc["filename"] == filename:
+            return {"filename": doc["filename"], "content": doc["content"]}
+    return {"filename": filename, "content": ""}
 
+
+# POST /api/docs/add  兼容旧调用，实际改为上传
 def add_doc(filename, content):
-    if config.USE_MOCK:
-        global _mock_docs
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        exist = False
-        for doc in _mock_docs:
-            if doc["filename"] == filename:
-                doc["content"] = content
-                doc["updated_at"] = now
-                exist = True
-                break
-        if not exist:
-            _mock_docs.append({
-                "filename": filename,
-                "updated_at": now,
-                "chunks": max(1, len(content) // 200),
-                "content": content
-            })
-        return {"message": "保存成功"}
-    return _request("POST", "/api/docs/add", json_data={"filename": filename, "content": content}) or {}
+    """保存 Markdown 文本内容（通过上传接口实现）"""
+    if isinstance(content, str):
+        content = content.encode("utf-8")
+    return upload_doc(filename, content)
 
+
+# POST /api/docs/delete  删除文档（后端未实现）
 def delete_doc(filename):
     if config.USE_MOCK:
         global _mock_docs
         _mock_docs = [d for d in _mock_docs if d["filename"] != filename]
         return {"message": "删除成功"}
-    return _request("POST", "/api/docs/delete", json_data={"filename": filename}) or {}
+    res = _request("POST", "/api/docs/delete", json_data={"filename": filename})
+    if res:
+        return res
+    print("删除接口未实现")
+    return None
 
 def get_monitoring_status():
     aggregates = get_aggregates()

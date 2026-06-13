@@ -2,7 +2,7 @@
 import base64
 from dash import html, dcc, Input, Output, State, no_update, ALL, ctx
 import dash_bootstrap_components as dbc
-from api_client import get_docs_list, get_doc_detail, add_doc, delete_doc, search_docs
+from api_client import get_docs_list, get_doc_detail, add_doc, delete_doc, search_docs, upload_doc
 import config
 
 # =========================================================
@@ -16,10 +16,10 @@ def get_file_list():
         files = []
         for d in docs:
             filename = d.get("filename", "")
-            size_kb = round(d.get("size", 0) / 1024, 2)
+            size_kb = round(d.get("size", 0) / 1024, 2) if d.get("size") else "?"
             files.append({
                 "name": filename,
-                "size": f"{size_kb} KB"
+                "size": f"{size_kb} KB" if isinstance(size_kb, (int, float)) else size_kb
             })
         files.sort(key=lambda x: x["name"].lower())
         return files
@@ -72,13 +72,12 @@ def render_file_list(selected_filename=None):
     return dbc.ListGroup(items, flush=True)
 
 # =========================================================
-# 页面布局
+# 页面布局 (保持不变)
 # =========================================================
 def create_knowledge_base_page():
     return html.Div([
         dcc.Store(id="kb-selected-file", data=None),
         dcc.Interval(id="kb-auto-refresh", interval=10000, n_intervals=0),
-        # 顶部标题
         html.Div([
             html.H2("知识库管理", style={
                 "color": "#4dd0e1", "fontWeight": "700", "marginBottom": "6px",
@@ -87,7 +86,6 @@ def create_knowledge_base_page():
             html.P("支持上传PDF/DOC/DOCX/TXT/MD，编辑、删除文档，并搜索知识库内容",
                    style={"color": "#94a3b8", "fontFamily": "Microsoft YaHei"})
         ], className="mb-4"),
-        # 搜索栏
         html.Div([
             dbc.InputGroup([
                 dbc.Input(
@@ -100,7 +98,6 @@ def create_knowledge_base_page():
             ], className="mb-3"),
             html.Div(id="kb-search-results", className="mb-3")
         ]),
-        # 操作按钮
         html.Div([
             dcc.Upload(
                 id="kb-upload",
@@ -126,7 +123,6 @@ def create_knowledge_base_page():
                 style={"borderRadius": "10px"}
             )
         ], className="d-flex flex-wrap mb-4", style={"gap": "10px"}),
-        # 主体布局：左侧文档列表 + 右侧编辑器
         dbc.Row([
             dbc.Col([
                 dbc.Card([
@@ -203,7 +199,6 @@ def create_knowledge_base_page():
 # 回调注册
 # =========================================================
 def register_knowledge_base_callbacks(app):
-    # 自动刷新文件列表
     @app.callback(
         Output("kb-file-list", "children"),
         Input("kb-auto-refresh", "n_intervals"),
@@ -212,7 +207,6 @@ def register_knowledge_base_callbacks(app):
     def refresh_file_list(n, selected):
         return render_file_list(selected)
 
-    # 点击文件读取内容
     @app.callback(
         Output("kb-filename", "value"),
         Output("kb-editor", "value"),
@@ -233,7 +227,6 @@ def register_knowledge_base_callbacks(app):
         except Exception as e:
             return file_name, f"读取失败：{str(e)}", file_name, render_file_list(file_name)
 
-    # 新建Markdown
     @app.callback(
         Output("kb-filename", "value", allow_duplicate=True),
         Output("kb-editor", "value", allow_duplicate=True),
@@ -244,7 +237,7 @@ def register_knowledge_base_callbacks(app):
     def new_markdown(_):
         return "new_doc.md", "", None
 
-    # 保存文件
+    # 保存文件（调用 upload_doc）
     @app.callback(
         Output("kb-msg", "children"),
         Output("kb-file-list", "children", allow_duplicate=True),
@@ -260,7 +253,7 @@ def register_knowledge_base_callbacks(app):
         if not filename.endswith(".md"):
             return dbc.Alert("文件名必须以 .md 结尾（Markdown格式）", color="warning"), no_update
         try:
-            result = add_doc(filename, content or "")
+            result = upload_doc(filename, (content or "").encode("utf-8"))
             if result:
                 new_list = render_file_list(selected)
                 return dbc.Alert(f"保存成功：{filename}", color="success"), new_list
@@ -269,7 +262,7 @@ def register_knowledge_base_callbacks(app):
         except Exception as e:
             return dbc.Alert(str(e), color="danger"), no_update
 
-    # 删除文件
+    # 删除文件（后端未实现，提示）
     @app.callback(
         Output("kb-msg", "children", allow_duplicate=True),
         Output("kb-filename", "value", allow_duplicate=True),
@@ -290,13 +283,13 @@ def register_knowledge_base_callbacks(app):
                 return (dbc.Alert(f"删除成功：{selected_filename}", color="success"),
                         "", "", None, new_list)
             else:
-                return (dbc.Alert("删除失败，请检查后端连接", color="danger"),
+                return (dbc.Alert("删除失败：后端删除接口未实现，请联系管理员", color="warning"),
                         no_update, no_update, no_update, no_update)
         except Exception as e:
             return (dbc.Alert(str(e), color="danger"),
                     no_update, no_update, no_update, no_update)
 
-    # 上传文件（支持多格式）
+    # 上传文件（改为调用 upload_doc）
     @app.callback(
         Output("kb-msg", "children", allow_duplicate=True),
         Output("kb-file-list", "children", allow_duplicate=True),
@@ -310,18 +303,10 @@ def register_knowledge_base_callbacks(app):
         try:
             content_type, content_string = contents.split(",")
             decoded = base64.b64decode(content_string)
-            # 对于文本文件，尝试解码为 UTF-8；对于二进制文件，直接传递 base64 字符串
-            # 后端/RAG组负责解析二进制文件（PDF/DOC等）并提取文本
-            try:
-                text_content = decoded.decode("utf-8")
-            except UnicodeDecodeError:
-                # 二进制文件：将 base64 字符串作为内容，后端解析
-                text_content = content_string  # 直接传base64字符串
-            # 保留原始文件名，后端可根据扩展名处理
-            result = add_doc(filename, text_content)
+            result = upload_doc(filename, decoded)
             if result:
                 new_list = render_file_list()
-                return dbc.Alert(f"上传成功：{filename}（后端将解析内容）", color="success"), new_list
+                return dbc.Alert(f"上传成功：{filename}", color="success"), new_list
             else:
                 return dbc.Alert("上传失败，请检查后端连接", color="danger"), no_update
         except Exception as e:
@@ -342,7 +327,7 @@ def register_knowledge_base_callbacks(app):
             if not results:
                 return dbc.Alert("未找到相关文档", color="info")
             items = []
-            for res in results[:10]:  # 最多显示10条
+            for res in results[:10]:
                 filename = res.get("filename", "未知")
                 snippet = res.get("content", "")[:300]
                 items.append(
