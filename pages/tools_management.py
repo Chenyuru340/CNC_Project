@@ -65,7 +65,7 @@ def create_tools_page():
     ])
 
 def register_tools_callbacks(app):
-    # 加载刀具表格
+    # 加载刀具表格（初始加载 + 按钮触发）
     @app.callback(
         Output("tools-table-container", "children"),
         Output("tools-feedback", "children", allow_duplicate=True),
@@ -73,11 +73,10 @@ def register_tools_callbacks(app):
         Input("tool-refresh-btn", "n_clicks"),
         Input("delete-tool-store", "data"),
         State("tool-search", "value"),
-        prevent_initial_call=False
+        prevent_initial_call='initial_duplicate'   # 允许初始调用，同时满足重复输出要求
     )
     def load_tools(search_clicks, refresh_clicks, delete_data, search_key):
         try:
-            # 直接使用 get_tools 返回的数据，无需二次 normalize
             all_tools = get_tools(page=1, page_size=500)
             if not all_tools and config.USE_MOCK:
                 mock_data = get_mock_data()
@@ -87,7 +86,6 @@ def register_tools_callbacks(app):
 
             df = pd.DataFrame(all_tools)
 
-            # 确保必要列存在（后端可能缺失，用"-"填充）
             for col in ["tool_id", "machine", "type", "manufacturer"]:
                 if col not in df.columns:
                     df[col] = "-"
@@ -96,7 +94,6 @@ def register_tools_callbacks(app):
             df["type"] = df["type"].fillna("铣刀")
             df["manufacturer"] = df["manufacturer"].fillna("-")
 
-            # 搜索过滤
             if search_key and search_key.strip():
                 keyword = search_key.strip().lower()
                 mask = df["tool_id"].str.lower().str.contains(keyword) | \
@@ -107,7 +104,6 @@ def register_tools_callbacks(app):
             if df.empty:
                 return dbc.Alert("未找到匹配的刀具", color="info"), ""
 
-            # 构建表格
             table_header = [
                 html.Thead(html.Tr([
                     html.Th("刀具ID"), html.Th("机床"), html.Th("类型"),
@@ -133,7 +129,7 @@ def register_tools_callbacks(app):
             traceback.print_exc()
             return dbc.Alert(f"加载失败: {str(e)}", color="danger"), ""
 
-    # 删除刀具（降级提示）
+    # 删除刀具
     @app.callback(
         Output("delete-tool-store", "data"),
         Output("tools-feedback", "children", allow_duplicate=True),
@@ -151,17 +147,15 @@ def register_tools_callbacks(app):
         try:
             result = delete_tool(tool_id)
             if result and isinstance(result, dict):
-                # 成功删除（或Mock成功）
                 return {"deleted": tool_id}, f"刀具 {tool_id} 删除成功"
             else:
-                # 接口返回None或空，说明未实现
                 return no_update, dbc.Alert("删除功能暂未开放，请联系管理员", color="warning")
         except Exception as e:
             return no_update, dbc.Alert(f"删除异常: {str(e)}", color="danger")
 
     # 打开/关闭模态框
     @app.callback(
-        Output("add-tool-modal", "is_open"),
+        Output("add-tool-modal", "is_open", allow_duplicate=True),
         Input("open-add-modal", "n_clicks"),
         Input("close-add-modal", "n_clicks"),
         Input("confirm-add-tool", "n_clicks"),
@@ -179,7 +173,7 @@ def register_tools_callbacks(app):
             return False
         return is_open
 
-    # 确认添加刀具（提交正确字段 + 降级提示）
+    # 确认添加刀具
     @app.callback(
         Output("add-tool-feedback", "children"),
         Output("tools-feedback", "children", allow_duplicate=True),
@@ -210,10 +204,8 @@ def register_tools_callbacks(app):
         try:
             result = add_tool(new_tool)
             if result and isinstance(result, dict) and result.get("tool_id"):
-                # 成功（Mock或真实接口返回正常）
                 return "", f"刀具 {tool_id} 添加成功", "", "", "铣刀", "", False
             else:
-                # 接口未实现或返回异常
                 return "新增失败：后端接口暂未开放", no_update, no_update, no_update, no_update, no_update, no_update
         except Exception as e:
             return f"添加异常: {str(e)}", no_update, no_update, no_update, no_update, no_update, no_update
