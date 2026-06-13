@@ -9,6 +9,7 @@ from utils.data_adapter import normalize_tool
 def create_monitoring_page():
     return html.Div([
         dcc.Store(id="monitoring-selected-tool", data=None),
+        dcc.Interval(id="monitoring-interval", interval=30000, n_intervals=0),
         dbc.Row([
             dbc.Col([
                 html.H5("刀具列表", className="mb-3", style={"fontFamily": "Microsoft YaHei"}),
@@ -23,11 +24,26 @@ def create_monitoring_page():
     ], style={"height": "100vh"})
 
 def register_monitoring_callbacks(app):
+    # 动态更新刷新间隔
+    @app.callback(
+        Output("monitoring-interval", "interval"),
+        Input("global-settings-store", "data")
+    )
+    def update_interval(settings):
+        if settings:
+            return settings.get("refresh_interval", 30) * 1000
+        return 30000
+
+    # 加载刀具列表（路由 + 定时刷新）
     @app.callback(
         Output("monitoring-tool-list", "children"),
-        Input("url", "pathname")
+        Input("url", "pathname"),
+        Input("monitoring-interval", "n_intervals"),
+        State("global-settings-store", "data")
     )
-    def load_tool_list(_):
+    def load_tool_list(pathname, n, settings):
+        if pathname != "/monitoring":
+            return no_update
         print("状态监测页面：加载刀具列表")
         tools_data = get_tools(page=1, page_size=200)
         tools = [normalize_tool(t) for t in tools_data] if tools_data else []
@@ -53,6 +69,7 @@ def register_monitoring_callbacks(app):
         print(f"状态监测页面：加载了 {len(items)} 把刀具")
         return dbc.ListGroup(items, flush=True)
 
+    # 点击刀具展示详情（保持不变）
     @app.callback(
         Output("monitoring-middle-content", "children"),
         Input({"type": "monitoring-tool-item", "index": dash.ALL}, "n_clicks"),
@@ -96,7 +113,6 @@ def register_monitoring_callbacks(app):
             history = get_tool_history(tool_id, start="-30d")
             hi_vals = history.get("hi", [])
             x_vals = history.get("time", [])
-            # 备选：若 history 无时间字段可用 health 字段，这里统一使用 hi
 
         except Exception as e:
             print(f"状态监测页面错误: {e}")
@@ -106,7 +122,6 @@ def register_monitoring_callbacks(app):
         fig = go.Figure()
         if hi_vals and len(hi_vals) > 0:
             if not x_vals or len(x_vals) != len(hi_vals):
-                # 时间字段缺失则用序号
                 x_vals = list(range(len(hi_vals)))
             fig.add_trace(go.Scatter(
                 x=x_vals, y=hi_vals, mode='lines+markers',
@@ -129,7 +144,6 @@ def register_monitoring_callbacks(app):
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)'
             )
-            # 无数据时给出提示
             no_data_msg = html.Div([
                 html.P("当前没有历史数据，可能的原因：", className="text-warning"),
                 html.Ul([
@@ -147,7 +161,6 @@ def register_monitoring_callbacks(app):
                 ])
             ], className="mb-3 glass-card"),
             dcc.Graph(figure=fig, style={"height": "350px"}),
-            # 无数据时的额外提示
             (no_data_msg if (not hi_vals or len(hi_vals)==0) else None),
             dbc.Row([
                 dbc.Col(dbc.Card([

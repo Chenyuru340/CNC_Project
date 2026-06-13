@@ -1,4 +1,5 @@
-from dash import html, dcc, callback, Input, Output
+# pages/dashboard.py
+from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
 from components import cards, charts
 from api_client import get_tools, get_tool_detail, get_mock_data, get_aggregates, get_alerts
@@ -7,44 +8,31 @@ import config
 
 COMMON_FONT = "Microsoft YaHei"
 
-
 def create_dashboard():
     return html.Div([
         html.H2("刀具健康总览", className="mb-4", style={"fontFamily": COMMON_FONT}),
+        dcc.Interval(id="dashboard-interval", interval=30000, n_intervals=0),
         dbc.Spinner(html.Div(id="dashboard-content"))
     ])
-
 
 def register_dashboard_callbacks(app):
     @app.callback(
         Output("dashboard-content", "children"),
-        Input("url", "pathname")
+        Input("dashboard-interval", "n_intervals"),
+        Input("global-settings-store", "data"),
+        State("url", "pathname")
     )
-    def load_dashboard(_):
+    def load_dashboard(n_intervals, settings, pathname):
+        alert_threshold = settings.get("alert_threshold", 40) if settings else 40
         try:
-            # 1. 聚合指标
-            agg_data = get_aggregates() or {}
-            total_tools = agg_data.get("total_tools", 0)
-            warning_tools = agg_data.get("warning_tools", 0)
-            danger_tools = agg_data.get("danger_tools", 0)
-            healthy_tools = total_tools - warning_tools - danger_tools
-
-            stats_row = dbc.Row([
-                dbc.Col(cards.stat_card("在线刀具", total_tools, "tools", "primary"), width=3),
-                dbc.Col(cards.stat_card("健康刀具", healthy_tools, "heartbeat", "success"), width=3),
-                dbc.Col(cards.stat_card("预警刀具", warning_tools, "exclamation-triangle", "warning"), width=3),
-                dbc.Col(cards.stat_card("危险刀具", danger_tools, "exclamation-circle", "danger"), width=3),
-            ], className="mb-4")
-
-            # 2. 刀具列表，并补全 RUL
+            # 1. 获取刀具列表
             tools = get_tools(page=1, page_size=200)
             tools_df = pd.DataFrame(tools)
-
             if tools_df.empty and config.USE_MOCK:
                 mock_data = get_mock_data()
                 tools_df = mock_data["tools"].copy()
 
-            # 用详情接口补全 RUL（后端列表接口不返回 rul）
+            # 2. 补全 RUL（后端列表接口不返回 rul，用详情接口补）
             if not tools_df.empty:
                 for i, row in tools_df.iterrows():
                     tid = row.get("tool_id")
@@ -53,11 +41,41 @@ def register_dashboard_callbacks(app):
                         if detail and detail.get("rul") is not None:
                             tools_df.at[i, "rul"] = detail["rul"]
 
-            for col in ["status", "health_score", "rul"]:
-                if col not in tools_df.columns:
-                    tools_df[col] = ""
+            # 3. 根据设置阈值重新计算刀具状态
+            if not tools_df.empty and "health_score" in tools_df.columns:
+                def compute_status(health):
+                    h = float(health) if health else 0
+                    if h >= 80:
+                        return "normal"
+                    elif h >= alert_threshold + 10:
+                        return "warning"
+                    elif h >= alert_threshold:
+                        return "danger"
+                    else:
+                        return "danger"
+                tools_df["status"] = tools_df["health_score"].apply(compute_status)
+            else:
+                # 如果为空或没有 health_score，给个默认
+                pass
 
-            # 3. 报警数据
+            # 4. 计算聚合指标（基于新状态）
+            if not tools_df.empty:
+                warning_count = len(tools_df[tools_df["status"] == "warning"])
+                danger_count = len(tools_df[tools_df["status"] == "danger"])
+                total_tools = len(tools_df)
+                healthy_tools = total_tools - warning_count - danger_count
+            else:
+                warning_count = danger_count = total_tools = healthy_tools = 0
+
+            # 5. 统计卡片
+            stats_row = dbc.Row([
+                dbc.Col(cards.stat_card("在线刀具", total_tools, "tools", "primary"), width=3),
+                dbc.Col(cards.stat_card("健康刀具", healthy_tools, "heartbeat", "success"), width=3),
+                dbc.Col(cards.stat_card("预警刀具", warning_count, "exclamation-triangle", "warning"), width=3),
+                dbc.Col(cards.stat_card("危险刀具", danger_count, "exclamation-circle", "danger"), width=3),
+            ], className="mb-4")
+
+            # 6. 报警数据（仍使用后端接口，如果后端未实现则会 fallback）
             alerts = get_alerts(page=1, page_size=100)
             total_alerts = len(alerts)
             unprocessed_count = len([a for a in alerts if a.get("handle_status") == "unprocessed"])
@@ -162,7 +180,7 @@ def register_dashboard_callbacks(app):
                 dbc.NavLink("查看全部 →", href="/alerts", className="mt-2 d-block text-end")
             ])
 
-            # 4. 刀具状态饼图
+            # 7. 刀具状态饼图
             if not tools_df.empty:
                 pie_fig = charts.create_degradation_pie(tools_df)
                 status_chart = dbc.Col([
@@ -179,15 +197,11 @@ def register_dashboard_callbacks(app):
                 status_chart
             ], className="mb-4")
 
-            # 5. 刀具卡片列表
+            # 8. 刀具卡片列表（应用阈值参数）
             if tools_df.empty:
                 tools_grid = dbc.Alert("刀具数据为空，请检查后端接口或数据源", color="warning")
             else:
-                try:
-                    tool_card_func = cards.tool_card_simple
-                except AttributeError:
-                    tool_card_func = cards.tool_card
-                tool_cards = [tool_card_func(row) for _, row in tools_df.iterrows()]
+                tool_cards = [cards.tool_card_simple(row, alert_threshold) for _, row in tools_df.iterrows()]
                 tools_grid = dbc.Row([
                     dbc.Col([
                         html.H5("刀具列表", style={"fontFamily": COMMON_FONT}),
@@ -201,3 +215,13 @@ def register_dashboard_callbacks(app):
             import traceback
             traceback.print_exc()
             return dbc.Alert(f"数据加载失败: {str(e)}", color="danger")
+
+    # 根据设置动态更新仪表盘刷新间隔
+    @app.callback(
+        Output("dashboard-interval", "interval"),
+        Input("global-settings-store", "data")
+    )
+    def update_interval(settings):
+        if settings:
+            return settings.get("refresh_interval", 30) * 1000
+        return 30000

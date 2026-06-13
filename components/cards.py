@@ -28,17 +28,16 @@ def stat_card(title, value, icon, color):
 # =========================
 # LED颜色
 # =========================
-def get_health_led(health_score):
+def get_health_led(health_score, alert_threshold=40):
     try:
         health_score = float(health_score)
-    except Exception:
+    except:
         health_score = 0
-
     if health_score >= 80:
         return "led-green"
-    elif health_score >= 60:
+    elif health_score >= alert_threshold + 10:  # 比阈值高10为预警
         return "led-yellow"
-    elif health_score >= 40:
+    elif health_score >= alert_threshold:
         return "led-orange"
     else:
         return "led-red"
@@ -47,17 +46,16 @@ def get_health_led(health_score):
 # =========================
 # 卡片边框颜色
 # =========================
-def get_card_border_class(health_score):
+def get_card_border_class(health_score, alert_threshold=40):
     try:
         health_score = float(health_score)
-    except Exception:
+    except:
         health_score = 0
-
     if health_score >= 80:
         return ""
-    elif health_score >= 60:
+    elif health_score >= alert_threshold + 10:
         return "tool-card-warning"
-    elif health_score >= 40:
+    elif health_score >= alert_threshold:
         return "tool-card-orange"
     else:
         return "tool-card-danger"
@@ -66,17 +64,16 @@ def get_card_border_class(health_score):
 # =========================
 # 状态配置
 # =========================
-def get_status_config(health):
+def get_status_config(health, alert_threshold=40):
     try:
         health = float(health)
-    except Exception:
+    except:
         health = 0
-
     if health >= 80:
         return "健康", "success"
-    elif health >= 60:
+    elif health >= alert_threshold + 10:
         return "轻度磨损", "warning"
-    elif health >= 40:
+    elif health >= alert_threshold:
         return "中度磨损", "orange"
     else:
         return "重度磨损", "danger"
@@ -85,13 +82,12 @@ def get_status_config(health):
 # =========================
 # 完整刀具卡片
 # =========================
-def tool_card(tool):
+def tool_card(tool, alert_threshold=40):
     health = float(tool.get("health_score", 0))
-    led_class = get_health_led(health)
-    border_class = get_card_border_class(health)
-    status_text, status_color = get_status_config(health)
+    led_class = get_health_led(health, alert_threshold)
+    border_class = get_card_border_class(health, alert_threshold)
+    status_text, status_color = get_status_config(health, alert_threshold)
     rul = int(tool.get("rul", 0))
-
     if rul >= 60:
         rul_display = f"{rul // 60}小时{rul % 60}分"
     else:
@@ -121,17 +117,14 @@ def tool_card(tool):
 # =========================
 # 精简刀具卡片（Dashboard 用）
 # =========================
-def tool_card_simple(tool):
+def tool_card_simple(tool, alert_threshold=40):
     health = float(tool.get("health_score", 0))
-    status_text, status_color = get_status_config(health)
+    status_text, status_color = get_status_config(health, alert_threshold)
     rul = int(tool.get("rul", 0))
-
     if rul >= 60:
         rul_display = f"{rul // 60}小时{rul % 60}分"
     else:
         rul_display = f"{rul}分钟"
-
-    # 友好显示缺失字段
     machine_display = tool.get("machine") or "未知机床"
     tool_type = tool.get("type") or "未知"
 
