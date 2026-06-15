@@ -24,7 +24,6 @@ def create_monitoring_page():
     ], style={"height": "100vh"})
 
 def register_monitoring_callbacks(app):
-    # 动态更新刷新间隔
     @app.callback(
         Output("monitoring-interval", "interval"),
         Input("global-settings-store", "data")
@@ -34,7 +33,6 @@ def register_monitoring_callbacks(app):
             return settings.get("refresh_interval", 30) * 1000
         return 30000
 
-    # 加载刀具列表（路由 + 定时刷新）
     @app.callback(
         Output("monitoring-tool-list", "children"),
         Input("url", "pathname"),
@@ -44,13 +42,11 @@ def register_monitoring_callbacks(app):
     def load_tool_list(pathname, n, settings):
         if pathname != "/monitoring":
             return no_update
-        print("状态监测页面：加载刀具列表")
         tools_data = get_tools(page=1, page_size=200)
         tools = [normalize_tool(t) for t in tools_data] if tools_data else []
         if not tools and config.USE_MOCK:
             tools = get_mock_data()["tools"].to_dict("records")
         if not tools:
-            print("状态监测页面：没有刀具数据")
             return dbc.Alert("没有刀具数据", color="warning")
         items = []
         for t in tools:
@@ -61,22 +57,17 @@ def register_monitoring_callbacks(app):
                 dbc.ListGroupItem(
                     f"{tool_id} ({t.get('type', '未知')})",
                     id={"type": "monitoring-tool-item", "index": tool_id},
-                    action=True,
-                    className="device-item",
-                    style={"cursor": "pointer"}
+                    action=True, className="device-item", style={"cursor": "pointer"}
                 )
             )
-        print(f"状态监测页面：加载了 {len(items)} 把刀具")
         return dbc.ListGroup(items, flush=True)
 
-    # 点击刀具展示详情（保持不变）
     @app.callback(
         Output("monitoring-middle-content", "children"),
         Input({"type": "monitoring-tool-item", "index": dash.ALL}, "n_clicks"),
         prevent_initial_call=True
     )
     def show_tool_detail(clicks):
-        print("状态监测页面：点击事件触发")
         if not ctx.triggered:
             return html.Div("请从左侧选择刀具", className="text-center text-muted", style={"marginTop": "50px"})
         triggered = ctx.triggered[0]
@@ -89,10 +80,8 @@ def register_monitoring_callbacks(app):
             tool_id = getattr(ctx.triggered_id, "index", None)
         if not tool_id:
             return dbc.Alert("无法识别刀具ID", color="danger")
-        print(f"状态监测页面：选中刀具 {tool_id}")
 
         try:
-            # 获取详情（含 rul 和 hi）
             if config.USE_MOCK:
                 data = get_mock_data()
                 tools_df = data["tools"]
@@ -109,25 +98,21 @@ def register_monitoring_callbacks(app):
                 health_score = tool.get("health_score", 0)
                 rul_min = tool.get("rul", 0)
 
-            # 获取历史曲线数据（使用新接口 start 参数）
             history = get_tool_history(tool_id, start="-30d")
             hi_vals = history.get("hi", [])
             x_vals = history.get("time", [])
-
         except Exception as e:
-            print(f"状态监测页面错误: {e}")
             return dbc.Alert(f"加载数据失败: {str(e)}", color="danger")
 
-        # 绘制曲线
         fig = go.Figure()
+        no_data_msg = None
         if hi_vals and len(hi_vals) > 0:
             if not x_vals or len(x_vals) != len(hi_vals):
                 x_vals = list(range(len(hi_vals)))
             fig.add_trace(go.Scatter(
                 x=x_vals, y=hi_vals, mode='lines+markers',
                 line=dict(color='#0dcaf0', width=2),
-                marker=dict(size=3),
-                name='HI (健康指标)'
+                marker=dict(size=3), name='HI (健康指标)'
             ))
             fig.update_layout(
                 title=f"{tool_id} 健康指标退化曲线",
@@ -161,7 +146,7 @@ def register_monitoring_callbacks(app):
                 ])
             ], className="mb-3 glass-card"),
             dcc.Graph(figure=fig, style={"height": "350px"}),
-            (no_data_msg if (not hi_vals or len(hi_vals)==0) else None),
+            no_data_msg,
             dbc.Row([
                 dbc.Col(dbc.Card([
                     dbc.CardBody([

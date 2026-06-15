@@ -1,5 +1,4 @@
-# pages/dashboard.py
-from dash import html, dcc, callback, Input, Output, State
+from dash import html, dcc, callback, Input, Output, State, no_update
 import dash_bootstrap_components as dbc
 from components import cards, charts
 from api_client import get_tools, get_tool_detail, get_mock_data, get_aggregates, get_alerts
@@ -18,21 +17,22 @@ def create_dashboard():
 def register_dashboard_callbacks(app):
     @app.callback(
         Output("dashboard-content", "children"),
-        Input("dashboard-interval", "n_intervals"),
-        Input("global-settings-store", "data"),
-        State("url", "pathname")
+        Input("url", "pathname"),               # 页面切换时立刻触发
+        Input("dashboard-interval", "n_intervals"),  # 定时刷新
+        Input("global-settings-store", "data"),      # 设置变更时刷新
     )
-    def load_dashboard(n_intervals, settings, pathname):
+    def load_dashboard(pathname, n_intervals, settings):
+        if pathname != "/":
+            return no_update                      # 非仪表盘页面不请求数据
+
         alert_threshold = settings.get("alert_threshold", 40) if settings else 40
         try:
-            # 1. 获取刀具列表
             tools = get_tools(page=1, page_size=200)
             tools_df = pd.DataFrame(tools)
             if tools_df.empty and config.USE_MOCK:
                 mock_data = get_mock_data()
                 tools_df = mock_data["tools"].copy()
 
-            # 2. 补全 RUL（后端列表接口不返回 rul，用详情接口补）
             if not tools_df.empty:
                 for i, row in tools_df.iterrows():
                     tid = row.get("tool_id")
@@ -41,7 +41,6 @@ def register_dashboard_callbacks(app):
                         if detail and detail.get("rul") is not None:
                             tools_df.at[i, "rul"] = detail["rul"]
 
-            # 3. 根据设置阈值重新计算刀具状态
             if not tools_df.empty and "health_score" in tools_df.columns:
                 def compute_status(health):
                     h = float(health) if health else 0
@@ -54,20 +53,12 @@ def register_dashboard_callbacks(app):
                     else:
                         return "danger"
                 tools_df["status"] = tools_df["health_score"].apply(compute_status)
-            else:
-                # 如果为空或没有 health_score，给个默认
-                pass
 
-            # 4. 计算聚合指标（基于新状态）
-            if not tools_df.empty:
-                warning_count = len(tools_df[tools_df["status"] == "warning"])
-                danger_count = len(tools_df[tools_df["status"] == "danger"])
-                total_tools = len(tools_df)
-                healthy_tools = total_tools - warning_count - danger_count
-            else:
-                warning_count = danger_count = total_tools = healthy_tools = 0
+            warning_count = len(tools_df[tools_df["status"] == "warning"]) if not tools_df.empty else 0
+            danger_count = len(tools_df[tools_df["status"] == "danger"]) if not tools_df.empty else 0
+            total_tools = len(tools_df)
+            healthy_tools = total_tools - warning_count - danger_count
 
-            # 5. 统计卡片
             stats_row = dbc.Row([
                 dbc.Col(cards.stat_card("在线刀具", total_tools, "tools", "primary"), width=3),
                 dbc.Col(cards.stat_card("健康刀具", healthy_tools, "heartbeat", "success"), width=3),
@@ -75,7 +66,6 @@ def register_dashboard_callbacks(app):
                 dbc.Col(cards.stat_card("危险刀具", danger_count, "exclamation-circle", "danger"), width=3),
             ], className="mb-4")
 
-            # 6. 报警数据（仍使用后端接口，如果后端未实现则会 fallback）
             alerts = get_alerts(page=1, page_size=100)
             total_alerts = len(alerts)
             unprocessed_count = len([a for a in alerts if a.get("handle_status") == "unprocessed"])
@@ -83,7 +73,6 @@ def register_dashboard_callbacks(app):
             processed_count = len([a for a in alerts if a.get("handle_status") == "processed"])
             latest_alerts = alerts[:5]
 
-            # 报警统计横条
             alert_stats = dbc.Row([
                 dbc.Col(dbc.Card(
                     dbc.CardBody([
@@ -115,7 +104,6 @@ def register_dashboard_callbacks(app):
                 ), width=3),
             ], className="mb-3")
 
-            # 报警卡片列表
             alert_cards = []
             for alert in latest_alerts:
                 level = alert.get("level", "info")
@@ -180,7 +168,6 @@ def register_dashboard_callbacks(app):
                 dbc.NavLink("查看全部 →", href="/alerts", className="mt-2 d-block text-end")
             ])
 
-            # 7. 刀具状态饼图
             if not tools_df.empty:
                 pie_fig = charts.create_degradation_pie(tools_df)
                 status_chart = dbc.Col([
@@ -197,7 +184,6 @@ def register_dashboard_callbacks(app):
                 status_chart
             ], className="mb-4")
 
-            # 8. 刀具卡片列表（应用阈值参数）
             if tools_df.empty:
                 tools_grid = dbc.Alert("刀具数据为空，请检查后端接口或数据源", color="warning")
             else:
@@ -216,7 +202,6 @@ def register_dashboard_callbacks(app):
             traceback.print_exc()
             return dbc.Alert(f"数据加载失败: {str(e)}", color="danger")
 
-    # 根据设置动态更新仪表盘刷新间隔
     @app.callback(
         Output("dashboard-interval", "interval"),
         Input("global-settings-store", "data")
