@@ -253,7 +253,7 @@ def register_knowledge_base_callbacks(app):
         if not filename.endswith(".md"):
             return dbc.Alert("文件名必须以 .md 结尾（Markdown格式）", color="warning"), no_update
         try:
-            result = upload_doc(filename, (content or "").encode("utf-8"))
+            result = add_doc(filename, content or "")
             if result:
                 new_list = render_file_list(selected)
                 return dbc.Alert(f"保存成功：{filename}", color="success"), new_list
@@ -283,7 +283,7 @@ def register_knowledge_base_callbacks(app):
                 return (dbc.Alert(f"删除成功：{selected_filename}", color="success"),
                         "", "", None, new_list)
             else:
-                return (dbc.Alert("删除失败：后端删除接口未实现，请联系管理员", color="warning"),
+                return (dbc.Alert("删除失败，请检查后端连接或文件是否存在", color="danger"),
                         no_update, no_update, no_update, no_update)
         except Exception as e:
             return (dbc.Alert(str(e), color="danger"),
