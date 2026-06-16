@@ -67,7 +67,7 @@ def register_monitoring_callbacks(app):
         Input({"type": "monitoring-tool-item", "index": dash.ALL}, "n_clicks"),
         prevent_initial_call=True
     )
-    def show_tool_detail(clicks, hi_vals=None):
+    def show_tool_detail(clicks):
         if not ctx.triggered:
             return html.Div("请从左侧选择刀具", className="text-center text-muted", style={"marginTop": "50px"})
         triggered = ctx.triggered[0]
@@ -115,10 +115,14 @@ def register_monitoring_callbacks(app):
                 line=dict(color='#0dcaf0', width=2),
                 marker=dict(size=3), name='健康度'
             ))
+            # 动态设定Y轴范围，留出一点边距，消除“震荡”错觉
+            y_min = max(0, min(health_vals) - 1)
+            y_max = max(health_vals) + 1
             fig.update_layout(
                 title=f"{tool_id} 健康度退化曲线",
                 xaxis_title="时间" if any(isinstance(x, str) for x in x_vals) else "样本序号",
                 yaxis_title="健康度（分）",
+                yaxis_range=[y_min, y_max],
                 template="plotly_dark",
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)'
