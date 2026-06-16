@@ -1,8 +1,7 @@
 from dash import html, dcc, callback, Input, Output, State, no_update
 import dash_bootstrap_components as dbc
 from components import cards, charts
-from api_client import get_tools, get_tool_detail, get_mock_data, get_aggregates, get_alerts, get_tool_predict, \
-    get_tool_history
+from api_client import get_tools, get_tool_detail, get_mock_data, get_aggregates, get_alerts, get_tool_predict
 import pandas as pd
 import config
 
@@ -38,14 +37,13 @@ def register_dashboard_callbacks(app):
                 for i, row in tools_df.iterrows():
                     tid = row.get("tool_id")
                     if tid:
-                        # 只取最近1小时的历史数据，避免超时
-                        hist = get_tool_history(tid, start="-1h")
-                        if hist and hist.get("health") and hist.get("rul"):
-                            # 取最后一条记录的值作为当前值
-                            last_health = hist["health"][-1]
-                            last_rul = hist["rul"][-1]
-                            tools_df.at[i, "health_score"] = last_health
-                            tools_df.at[i, "rul"] = last_rul
+                        try:
+                            pred = get_tool_predict(tid)
+                            if pred and pred.get("health") is not None:
+                                tools_df.at[i, "health_score"] = pred["health"]
+                                tools_df.at[i, "rul"] = pred["rul"]
+                        except Exception:
+                            pass  # 单把刀具失败不影响其他刀具
 
             if not tools_df.empty and "health_score" in tools_df.columns:
                 def compute_status(health):
