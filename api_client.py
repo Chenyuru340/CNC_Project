@@ -94,6 +94,16 @@ def build_alerts_from_tools(tools):
     alerts = []
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for index, tool in enumerate([normalize_tool(t) for t in tools], start=1):
+        # 尝试从后端获取真实健康度
+        tid = tool.get("tool_id")
+        if tid:
+            try:
+                pred = get_tool_predict(tid)
+                if pred and pred.get("health") is not None:
+                    tool["health_score"] = pred["health"]
+            except Exception:
+                pass  # 获取失败就保持原值，不影响其他刀具
+
         status = tool.get("status")
         if status == "normal":
             continue
