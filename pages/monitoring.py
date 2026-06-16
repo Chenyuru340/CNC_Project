@@ -67,7 +67,7 @@ def register_monitoring_callbacks(app):
         Input({"type": "monitoring-tool-item", "index": dash.ALL}, "n_clicks"),
         prevent_initial_call=True
     )
-    def show_tool_detail(clicks):
+    def show_tool_detail(clicks, hi_vals=None):
         if not ctx.triggered:
             return html.Div("请从左侧选择刀具", className="text-center text-muted", style={"marginTop": "50px"})
         triggered = ctx.triggered[0]
@@ -100,25 +100,25 @@ def register_monitoring_callbacks(app):
                 rul_min = pred.get("rul", 0)
 
             history = get_tool_history(tool_id, start="-7d")
-            hi_vals = history.get("hi", [])
+            health_vals = history.get("health", [])
             x_vals = history.get("time", [])
         except Exception as e:
             return dbc.Alert(f"加载数据失败: {str(e)}", color="danger")
 
         fig = go.Figure()
         no_data_msg = None
-        if hi_vals and len(hi_vals) > 0:
-            if not x_vals or len(x_vals) != len(hi_vals):
-                x_vals = list(range(len(hi_vals)))
+        if health_vals and len(health_vals) > 0:
+            if not x_vals or len(x_vals) != len(health_vals):
+                x_vals = list(range(len(health_vals)))
             fig.add_trace(go.Scatter(
-                x=x_vals, y=hi_vals, mode='lines+markers',
+                x=x_vals, y=health_vals, mode='lines+markers',
                 line=dict(color='#0dcaf0', width=2),
-                marker=dict(size=3), name='HI (健康指标)'
+                marker=dict(size=3), name='健康度'
             ))
             fig.update_layout(
-                title=f"{tool_id} 健康指标退化曲线",
+                title=f"{tool_id} 健康度退化曲线",
                 xaxis_title="时间" if any(isinstance(x, str) for x in x_vals) else "样本序号",
-                yaxis_title="HI 值",
+                yaxis_title="健康度（分）",
                 template="plotly_dark",
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)'
@@ -134,7 +134,7 @@ def register_monitoring_callbacks(app):
                 html.P("当前没有历史数据，可能的原因：", className="text-warning"),
                 html.Ul([
                     html.Li("数据组尚未写入历史记录"),
-                    html.Li("时间范围 start=-30d 内无数据，请调整参数"),
+                    html.Li("时间范围 start=-7d 内无数据，请调整参数"),
                     html.Li("检查后端日志确认 /api/tools/{id}/history 是否正常")
                 ])
             ], className="mt-3")
