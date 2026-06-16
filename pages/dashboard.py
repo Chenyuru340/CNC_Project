@@ -17,13 +17,13 @@ def create_dashboard():
 def register_dashboard_callbacks(app):
     @app.callback(
         Output("dashboard-content", "children"),
-        Input("url", "pathname"),               # 页面切换时立刻触发
-        Input("dashboard-interval", "n_intervals"),  # 定时刷新
-        Input("global-settings-store", "data"),      # 设置变更时刷新
+        Input("url", "pathname"),
+        Input("dashboard-interval", "n_intervals"),
+        Input("global-settings-store", "data"),
     )
     def load_dashboard(pathname, n_intervals, settings):
         if pathname != "/":
-            return no_update                      # 非仪表盘页面不请求数据
+            return no_update
 
         alert_threshold = settings.get("alert_threshold", 40) if settings else 40
         try:
@@ -33,6 +33,7 @@ def register_dashboard_callbacks(app):
                 mock_data = get_mock_data()
                 tools_df = mock_data["tools"].copy()
 
+            # 用 predict 接口补全健康度和剩余寿命
             if not tools_df.empty:
                 for i, row in tools_df.iterrows():
                     tid = row.get("tool_id")
@@ -43,8 +44,9 @@ def register_dashboard_callbacks(app):
                                 tools_df.at[i, "health_score"] = pred["health"]
                                 tools_df.at[i, "rul"] = pred["rul"]
                         except Exception:
-                            pass  # 单把刀具失败不影响其他刀具
+                            pass  # 单把刀具失败不影响其他
 
+            # 重新计算状态
             if not tools_df.empty and "health_score" in tools_df.columns:
                 def compute_status(health):
                     h = float(health) if health else 0
@@ -58,6 +60,7 @@ def register_dashboard_callbacks(app):
                         return "danger"
                 tools_df["status"] = tools_df["health_score"].apply(compute_status)
 
+            # 统计卡片
             warning_count = len(tools_df[tools_df["status"] == "warning"]) if not tools_df.empty else 0
             danger_count = len(tools_df[tools_df["status"] == "danger"]) if not tools_df.empty else 0
             total_tools = len(tools_df)
@@ -70,6 +73,7 @@ def register_dashboard_callbacks(app):
                 dbc.Col(cards.stat_card("危险刀具", danger_count, "exclamation-circle", "danger"), width=3),
             ], className="mb-4")
 
+            # 报警数据
             alerts = get_alerts(page=1, page_size=100)
             total_alerts = len(alerts)
             unprocessed_count = len([a for a in alerts if a.get("handle_status") == "unprocessed"])
@@ -108,47 +112,28 @@ def register_dashboard_callbacks(app):
                 ), width=3),
             ], className="mb-3")
 
+            # 报警卡片列表
             alert_cards = []
             for alert in latest_alerts:
                 level = alert.get("level", "info")
-                if level == "danger":
-                    border_color = "#dc3545"
-                    level_badge = dbc.Badge("危险", color="danger")
-                elif level == "warning":
-                    border_color = "#ffc107"
-                    level_badge = dbc.Badge("警告", color="warning")
-                else:
-                    border_color = "#0dcaf0"
-                    level_badge = dbc.Badge("信息", color="info")
-
+                border_color = "#dc3545" if level == "danger" else ("#ffc107" if level == "warning" else "#0dcaf0")
+                level_badge = dbc.Badge("危险", color="danger") if level == "danger" else (dbc.Badge("警告", color="warning") if level == "warning" else dbc.Badge("信息", color="info"))
                 status = alert.get("handle_status", "unprocessed")
-                if status == "unprocessed":
-                    status_badge = dbc.Badge("未处理", color="danger", className="ms-2")
-                elif status == "processing":
-                    status_badge = dbc.Badge("处理中", color="warning", className="ms-2")
-                else:
-                    status_badge = dbc.Badge("已处理", color="success", className="ms-2")
-
+                status_badge = dbc.Badge("未处理", color="danger") if status == "unprocessed" else (dbc.Badge("处理中", color="warning") if status == "processing" else dbc.Badge("已处理", color="success"))
                 alert_cards.append(
                     dbc.Card(
                         dbc.CardBody([
                             html.Div([
                                 html.Div([
                                     html.Div(style={
-                                        "width": "4px",
-                                        "height": "100%",
-                                        "backgroundColor": border_color,
-                                        "position": "absolute",
-                                        "left": 0,
-                                        "top": 0,
-                                        "borderRadius": "4px 0 0 4px"
+                                        "width": "4px", "height": "100%", "backgroundColor": border_color,
+                                        "position": "absolute", "left": 0, "top": 0, "borderRadius": "4px 0 0 4px"
                                     }),
                                     html.Div([
                                         html.Div([
                                             html.Small(alert.get("time", ""), className="text-muted me-2"),
                                             html.Strong(alert.get("tool_id", ""), className="me-2"),
-                                            level_badge,
-                                            status_badge
+                                            level_badge, status_badge
                                         ], className="mb-1"),
                                         html.Div([
                                             html.Span(alert.get("alert_type", ""), className="me-2 fw-bold"),
@@ -161,7 +146,6 @@ def register_dashboard_callbacks(app):
                         className="mb-2 shadow-sm"
                     )
                 )
-
             if not alert_cards:
                 alert_cards = [dbc.Alert("暂无报警记录", color="info")]
 
@@ -172,6 +156,7 @@ def register_dashboard_callbacks(app):
                 dbc.NavLink("查看全部 →", href="/alerts", className="mt-2 d-block text-end")
             ])
 
+            # 饼图
             if not tools_df.empty:
                 pie_fig = charts.create_degradation_pie(tools_df)
                 status_chart = dbc.Col([
@@ -188,6 +173,7 @@ def register_dashboard_callbacks(app):
                 status_chart
             ], className="mb-4")
 
+            # 刀具卡片列表
             if tools_df.empty:
                 tools_grid = dbc.Alert("刀具数据为空，请检查后端接口或数据源", color="warning")
             else:

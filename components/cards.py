@@ -35,7 +35,7 @@ def get_health_led(health_score, alert_threshold=40):
         health_score = 0
     if health_score >= 80:
         return "led-green"
-    elif health_score >= alert_threshold + 10:  # 比阈值高10为预警
+    elif health_score >= alert_threshold + 10:
         return "led-yellow"
     elif health_score >= alert_threshold:
         return "led-orange"
@@ -119,7 +119,6 @@ def tool_card(tool, alert_threshold=40):
 # =========================
 def tool_card_simple(tool, alert_threshold=40):
     health = float(tool.get("health_score", 0))
-    status_text, status_color = get_status_config(health, alert_threshold)
     rul = int(tool.get("rul", 0))
     if rul >= 60:
         rul_display = f"{rul // 60}小时{rul % 60}分"
@@ -134,9 +133,9 @@ def tool_card_simple(tool, alert_threshold=40):
                 html.Strong(tool.get("tool_id", "未知刀具"), style={"fontFamily": "Microsoft YaHei"})
             ]),
             dbc.CardBody([
-                dbc.Badge(status_text, color=status_color, className="mb-2"),
                 html.P(f"机床：{machine_display}", className="small mb-2", style={"fontFamily": "Microsoft YaHei"}),
                 html.P(f"类型：{tool_type}", className="small mb-2", style={"fontFamily": "Microsoft YaHei"}),
+                html.P(f"健康度：{health:.1f} 分", className="small mb-2", style={"fontFamily": "Microsoft YaHei"}),
                 html.P(f"剩余寿命：{rul_display}", className="small mb-0", style={"fontFamily": "Microsoft YaHei"})
             ])
         ], className="shadow-sm h-100"),
