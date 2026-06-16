@@ -102,12 +102,10 @@ fault_page = fault_diagnosis.create_fault_diagnosis_page()
 # App Layout
 # =========================
 app.layout = html.Div([
-
     dcc.Location(id='url', refresh=False),
-
     sidebar,
-
     # 页面容器（所有页面预先渲染，通过样式控制显示/隐藏）
+    dcc.Store(id="global-settings-store", data={"refresh_interval": 30, "alert_threshold": 40}),
     html.Div([
 
         html.Div(
