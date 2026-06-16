@@ -18,7 +18,7 @@ from pages import (
 )
 
 from api_client import get_alerts
-
+from api_client import get_settings
 import traceback
 import sys
 
@@ -97,7 +97,7 @@ monitoring_page = monitoring.create_monitoring_page()
 phm_page = phm_agent.create_phm_agent_page()
 knowledge_page = knowledge_base.create_knowledge_base_page()
 fault_page = fault_diagnosis.create_fault_diagnosis_page()
-
+initial_settings = get_settings()   # 从后端读取，失败时返回默认值
 # =========================
 # App Layout
 # =========================
@@ -105,7 +105,7 @@ app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
     sidebar,
     # 页面容器（所有页面预先渲染，通过样式控制显示/隐藏）
-    dcc.Store(id="global-settings-store", data={"refresh_interval": 30, "alert_threshold": 40}),
+dcc.Store(id="global-settings-store", data=initial_settings),
     html.Div([
 
         html.Div(
