@@ -343,8 +343,17 @@ def get_tool_history(tool_id: str, start: str = "-30d"):
             return {"time": times, "health": hi_vals, "hi": hi_vals, "rul": []}
         return {"time": [], "health": [], "hi": [], "rul": []}
 
-    res = _request("GET", f"/api/tools/{tool_id}/history", params={"start": start})
-    if res and isinstance(res, dict) and "data" in res:
+    url = f"{BASE_URL}/api/tools/{tool_id}/history"
+    try:
+        resp = requests.get(url, params={"start": start}, timeout=60)
+        resp.raise_for_status()
+        res = resp.json()
+    except Exception as e:
+        print(f"历史接口请求失败: {e}")
+        return {"time": [], "health": [], "hi": [], "rul": []}
+
+    # 后面的解析逻辑不变（判断 res 包含 data）
+    if isinstance(res, dict) and "data" in res:
         data = res["data"]
         times = [d.get("time", "") for d in data]
         health_vals = [d.get("health", 0) for d in data]
@@ -356,7 +365,6 @@ def get_tool_history(tool_id: str, start: str = "-30d"):
             "hi": hi_vals,
             "rul": rul_vals
         }
-    # 接口返回异常或无数据
     print(f"历史接口未返回有效数据: {res}")
     return {"time": [], "health": [], "hi": [], "rul": []}
 

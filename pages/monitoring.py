@@ -3,7 +3,7 @@ from dash import html, dcc, Input, Output, State, no_update, ctx
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import config
-from api_client import get_tools, get_tool_detail, get_mock_data, get_tool_history
+from api_client import get_tools, get_tool_detail, get_mock_data, get_tool_history, get_tool_predict
 from utils.data_adapter import normalize_tool
 
 def create_monitoring_page():
@@ -92,11 +92,12 @@ def register_monitoring_callbacks(app):
                 health_score = tool.get("health_score", 0)
                 rul_min = tool.get("rul", 0)
             else:
-                tool = get_tool_detail(tool_id)
-                if not tool:
-                    return dbc.Alert(f"未获取到刀具 {tool_id} 详情", color="warning")
-                health_score = tool.get("health_score", 0)
-                rul_min = tool.get("rul", 0)
+                # 改用 predict 接口获取健康度和剩余寿命
+                pred = get_tool_predict(tool_id)
+                if not pred:
+                    return dbc.Alert(f"未获取到刀具 {tool_id} 的预测数据", color="warning")
+                health_score = pred.get("health", 0)
+                rul_min = pred.get("rul", 0)
 
             history = get_tool_history(tool_id, start="-30d")
             hi_vals = history.get("hi", [])
