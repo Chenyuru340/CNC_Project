@@ -409,89 +409,6 @@ def save_settings(refresh_interval, alert_threshold):
         "alert_threshold": alert_threshold
     }) or {}
 
-# -------------------------- 4. 知识库接口（对齐后端 /api/docs） --------------------------
-# 注意：后端实际提供：
-#   GET  /api/docs/search?q=...      返回 {"query":"...","results":[{filename,content}]}
-#   POST /api/docs/upload            上传文件 (multipart/form-data, 字段名 file)
-# 未实现：列表、详情、删除接口，前端暂时用 Mock 降级
-
-_mock_docs = [
-    {
-        "filename": "刀具磨损故障分析.md",
-        "updated_at": "2026-05-14 10:00",
-        "chunks": 18,
-        "content": "# 刀具磨损故障分析\n\n## 故障特征\n\n- 振动增加\n- 切削力增大\n- 表面粗糙度恶化\n\n## 解决方案\n\n1. 调整切削参数\n2. 检查主轴\n3. 更换刀具\n"
-    },
-    {
-        "filename": "PHM2010数据集使用指南.md",
-        "updated_at": "2026-05-15 15:20",
-        "chunks": 22,
-        "content": "# PHM2010数据集\n\n包含：\n\n- 振动信号\n- 电流信号\n- 声发射信号\n"
-    }
-]
-
-# GET /api/docs/search  知识库检索（已实现）
-def search_docs(query):
-    if config.USE_MOCK:
-        results = []
-        for doc in _mock_docs:
-            if query.lower() in doc["content"].lower():
-                results.append({"filename": doc["filename"], "content": doc["content"][:1000]})
-        if not results:
-            results = [{"filename": doc["filename"], "content": doc["content"][:1000]} for doc in _mock_docs[:2]]
-        return results
-
-    res = _request("GET", "/api/docs/search", params={"q": query})
-    if not res or not isinstance(res, dict):
-        return []
-    # 新接口返回格式: {"query":"...", "results": [{"filename":"...","content":"..."}]}
-    items = res.get("results", [])
-    return [{"filename": r.get("filename", ""), "content": r.get("content", "")} for r in items]
-
-
-# POST /api/docs/upload  上传文件（已实现）
-def upload_doc(filename: str, file_content: bytes):
-    """上传文件到知识库
-    :param filename: 文件名（含扩展名）
-    :param file_content: 文件二进制内容
-    """
-    if config.USE_MOCK:
-        global _mock_docs
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        # 模拟：直接存储为 mock 文档
-        try:
-            text = file_content.decode("utf-8", errors="ignore")[:2000]
-        except:
-            text = f"[二进制文件 {filename}]"
-        for doc in _mock_docs:
-            if doc["filename"] == filename:
-                doc["content"] = text
-                doc["updated_at"] = now
-                return {"message": "保存成功"}
-        _mock_docs.append({
-            "filename": filename,
-            "updated_at": now,
-            "chunks": max(1, len(text) // 200),
-            "content": text
-        })
-        return {"message": "上传成功"}
-
-    # 真实模式：调用 POST /api/docs/upload，multipart/form-data
-    url = f"{BASE_URL}/api/docs/upload"
-    try:
-        files = {"file": (filename, file_content)}
-        resp = requests.post(url, files=files, timeout=30)
-        resp.raise_for_status()
-        # 后端可能返回字符串或 JSON
-        try:
-            return resp.json()
-        except:
-            return {"message": resp.text}
-    except Exception as e:
-        print(f"上传文档失败: {e}")
-        return None
-
-
 # -------------------------- 4. 知识库接口（对齐最新后端 /api/docs） --------------------------
 _mock_docs = [
     {
@@ -638,7 +555,20 @@ def delete_doc(filename):
         return res
     print("delete_doc 失败")
     return None
+# GET /api/tools/{tool_id}/predict  获取刀具预测数据（含 health, rul）
+def get_tool_predict(tool_id: str):
+    """调用 /api/tools/{tool_id}/predict 获取健康度和剩余寿命"""
+    if config.USE_MOCK:
+        # Mock 模式返回模拟数据
+        return {"health": 50.0, "rul": 100.0}
 
+    res = _request("GET", f"/api/tools/{tool_id}/predict")
+    if res and isinstance(res, dict):
+        return {
+            "health": safe_float(res.get("health", 0)),
+            "rul": safe_float(res.get("rul", 0))
+        }
+    return None
 def get_monitoring_status():
     aggregates = get_aggregates()
     alerts = get_alerts(handle_status="unprocessed", page=1, page_size=100)
