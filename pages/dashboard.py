@@ -25,6 +25,7 @@ def register_dashboard_callbacks(app):
         if pathname != "/":
             return no_update
 
+        # alert_threshold 不再用于状态重新计算，但保留变量以兼容
         alert_threshold = settings.get("alert_threshold", 40) if settings else 40
         try:
             tools = get_tools(page=1, page_size=200)
@@ -44,21 +45,14 @@ def register_dashboard_callbacks(app):
                                 tools_df.at[i, "health_score"] = pred["health"]
                                 tools_df.at[i, "rul"] = pred["rul"]
                         except Exception:
-                            pass  # 单把刀具失败不影响其他
+                            pass
 
-            # 重新计算状态
-            if not tools_df.empty and "health_score" in tools_df.columns:
-                def compute_status(health):
-                    h = float(health) if health else 0
-                    if h >= 80:
-                        return "normal"
-                    elif h >= alert_threshold + 10:
-                        return "warning"
-                    elif h >= alert_threshold:
-                        return "danger"
-                    else:
-                        return "danger"
-                tools_df["status"] = tools_df["health_score"].apply(compute_status)
+            # 直接使用后端映射后的状态（已在 normalize_tool 中处理）
+            # 不再调用 compute_status 重新计算
+            if not tools_df.empty:
+                # 确保 status 列存在
+                if "status" not in tools_df.columns:
+                    tools_df["status"] = "normal"  # fallback
 
             # 统计卡片
             warning_count = len(tools_df[tools_df["status"] == "warning"]) if not tools_df.empty else 0
@@ -112,7 +106,6 @@ def register_dashboard_callbacks(app):
                 ), width=3),
             ], className="mb-3")
 
-            # 报警卡片列表
             alert_cards = []
             for alert in latest_alerts:
                 level = alert.get("level", "info")
@@ -156,7 +149,6 @@ def register_dashboard_callbacks(app):
                 dbc.NavLink("查看全部 →", href="/alerts", className="mt-2 d-block text-end")
             ])
 
-            # 饼图
             if not tools_df.empty:
                 pie_fig = charts.create_degradation_pie(tools_df)
                 status_chart = dbc.Col([
@@ -173,7 +165,6 @@ def register_dashboard_callbacks(app):
                 status_chart
             ], className="mb-4")
 
-            # 刀具卡片列表
             if tools_df.empty:
                 tools_grid = dbc.Alert("刀具数据为空，请检查后端接口或数据源", color="warning")
             else:
