@@ -99,7 +99,7 @@ def register_monitoring_callbacks(app):
                 health_score = pred.get("health", 0)
                 rul_min = pred.get("rul", 0)
 
-            history = get_tool_history(tool_id, start="-365d")
+            history = get_tool_history(tool_id, start="-30d")
             health_vals = history.get("health", [])
             x_vals = history.get("time", [])
         except Exception as e:
