@@ -99,7 +99,7 @@ def register_monitoring_callbacks(app):
                 health_score = pred.get("health", 0)
                 rul_min = pred.get("rul", 0)
 
-            history = get_tool_history(tool_id, start="-7d")
+            history = get_tool_history(tool_id, start="-365d")
             health_vals = history.get("health", [])
             x_vals = history.get("time", [])
         except Exception as e:
@@ -138,7 +138,7 @@ def register_monitoring_callbacks(app):
                 html.P("当前没有历史数据，可能的原因：", className="text-warning"),
                 html.Ul([
                     html.Li("数据组尚未写入历史记录"),
-                    html.Li("时间范围 start=-7d 内无数据，请调整参数"),
+                    html.Li("时间范围 start=-30d 内无数据，请调整参数"),
                     html.Li("检查后端日志确认 /api/tools/{id}/history 是否正常")
                 ])
             ], className="mt-3")
